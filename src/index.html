@@ -3,7 +3,28 @@
 <head>
   <meta charset="UTF-8">
   <title><%= htmlWebpackPlugin.options.title %></title>
+  <style>
+    body, html {
+      height: 100%;
+    }
+    body {
+      margin: 0;
+    }
+    body > svg {
+      font-family: 'Comfortaa', cursive;
+    }
+  </style>
 </head>
 <body>
+  <svg width="100%" height="100%">
+    <defs>
+      <style type="text/css">
+        @font-face {
+          font-family: Delicious;
+          src: url('https://fonts.googleapis.com/css?family=Comfortaa&display=swap');
+        }
+      </style>
+    </defs>
+  </svg>
 </body>
 </html>
