@@ -1,7 +1,7 @@
 {
   "name": "timeclock-vis",
   "scripts": {
-    "start": "webpack-dev-server --host 0.0.0.0",
+    "start": "webpack-dev-server --host=0.0.0.0 --disableHostCheck=true",
     "build": "webpack --config webpack.config.js",
     "test": "mocha -r ts-node/register src/**/*.spec.ts"
   },
