@@ -2,9 +2,17 @@ import '../node_modules/typeface-comfortaa/index.css'
 import * as faker from 'faker';
 import * as d3 from 'd3';
 
+enum TimeBlockType {
+    New = 'new',
+    Active = 'active',
+    Upcoming = 'upcoming',
+    Unknown = 'unknown',
+}
+
+let lastId = 0;
 const fakeNow = new Date(2019, 11, 20, 15, 50, 0);
 const fakeData = [
-    ...Array.from(Array(9)).map(_ => createFakeInfo()),
+    ...Array.from(Array(9)).map((_, i) => ({y: i, ...createFakeInfo()})),
 ]
 {
     fakeData[0].enter = new Date(fakeNow.getFullYear(), fakeNow.getMonth(), fakeNow.getDate(), fakeNow.getHours(), fakeNow.getMinutes() - 3);
@@ -58,14 +66,10 @@ const colors = {
 };
 
 
-enum TimeBlockType {
-    New = 'new',
-    Active = 'active',
-    Upcoming = 'upcoming',
-    Unknown = 'unknown',
-}
-
 function draw() {
+  let now, width, height, innerWidth;
+  let data = fakeData;
+
   const zoom = d3.zoom().scaleExtent([1, Infinity]).on('zoom', zoomed);
   const timeScale = d3.scaleTime();
 
@@ -81,9 +85,8 @@ function draw() {
 
   dataG.call(zoom);
 
-  const topBar = svg.append('g').classed('top-bar', true);
+  const topBar = svg.append('g').classed('top bar', true);
   topBar.append('rect').attr('fill', colors.lightBlue);
-
 
   // current time
   topBar.append('g').classed('current-time', true).append('text')
@@ -92,10 +95,33 @@ function draw() {
 
   topBar.append('g').classed('time-scale', true);
 
+  const bottomBar = svg.append('g').classed('bottom bar', true);
+  bottomBar.append('rect')
+    .attr('fill', colors.lightBlue)
+
+  createButton(bottomBar, 'Add')
+    .attr('transform', 'translate(10,10)')
+    .on('click', () => {
+      const obj = {...data[0], id: ++lastId, y: 0};
+      data.unshift(obj);
+      for (let i = 0; i < data.length; i++) {
+        data[i].y = i;
+      }
+      redraw();
+    });
+  createButton(bottomBar, 'Change')
+    .attr('transform', 'translate(120,10)')
+    .on('click', () => {
+      now.setMinutes(now.getMinutes() + 1);
+      const obj = data[0];
+      obj.type = TimeBlockType.Active;
+      redraw();
+      console.log(obj);
+    });
+
 
   const padding = 8;
   const rangeWidth = 2;
-  let now, width, height, innerWidth, data;
 
   function updateTimeScale() {
     // now = new Date();
@@ -117,15 +143,22 @@ function draw() {
     // timeScale.domain(t.domain());
   }
 
-  function redraw() {
-    data = fakeData;
+  function redraw(animate = true) {
     updateDimensions();
     updateTimeScale();
     zoom.translateExtent([[0, 0], [width, height]])
       .extent([[0, 0], [width, height]]);
 
     const topBarHeight = 80;
-    topBar.select('rect').attr('width', width).attr('height', topBarHeight);
+    topBar.select('rect')
+      .attr('width', width)
+      .attr('height', topBarHeight);
+
+    bottomBar.attr('transform', `translate(0,${height-topBarHeight})`)
+      .select('rect')
+      .attr('width', width)
+      .attr('height', topBarHeight);
+
     dataG.attr('transform', `translate(0,${topBarHeight + padding})`);
 
     zoomBox.attr('width', width)
@@ -170,94 +203,144 @@ function draw() {
     {
       let s = dataG.selectAll('g.record');
 
-      const newThreshold = 5 * 60 * 1000; // 5 minutes
-
-      const newWidth = 240;
-
-      const blocks = data.map(d => {
-        // is new
-        let type, x, blockWidth;
-        if (d.enter && d.exit == null && (now - d.enter) < newThreshold) {
-            type = TimeBlockType.New;
-            x = width / 2 - newWidth / 2;
-            blockWidth = newWidth;
-        } else if (d.enter && d.exit == null) {
-            type = TimeBlockType.Active;
-            x = timeScale(d.enter);
-            x = x > 0 ? x : 0;
-            blockWidth = width / 2 - x;
-        } else if (d.enter == null) {
-            type = TimeBlockType.Upcoming;
-            x = timeScale(d.typicalEnter);
-            blockWidth = width - x;
-        }
-        return {...d, type, x, width: blockWidth};
-      });
-
       const blockSpacing = 60;
       const blockPadding = 10;
       const blockHeight = blockSpacing - blockPadding;
       const blockTimeWidth = 40;
+      const newWidth = 240;
+      const newThreshold = 5 * 60 * 1000; // 5 minutes
 
-      const e = s.data(blocks).enter()
+      for (let i = 0; i < data.length; i++) {
+        const d = data[i];
+        d.y = i;
+        if (d.enter && d.exit == null && (now - d.enter) < newThreshold) {
+          d.type = TimeBlockType.New;
+          d.x = width / 2 - newWidth / 2;
+          d.width = newWidth;
+        } else if (d.enter && d.exit == null) {
+          d.type = TimeBlockType.Active;
+          d.x = timeScale(d.enter);
+          d.x = d.x > 0 ? d.x : 0;
+          d.width = width / 2 - d.x;
+        } else if (d.enter == null) {
+          d.type = TimeBlockType.Upcoming;
+          d.x = timeScale(d.typicalEnter);
+          d.width = width - d.x;
+        }
+      }
+
+      const merging = s.data(data, (d: any) => d.id);
+
+      const e = merging.enter()
         .append('g').classed('record', true).attr('transform', `translate(0,${-blockSpacing})`);
+
+      merging.exit().remove();
 
       e.filter((d: any) => d.type == TimeBlockType.Active || d.type == TimeBlockType.Upcoming)
         .append('rect')
         .classed('background', true)
         .attr('fill', colors.lightBlue);
 
-      e.append('rect').classed('foreground', true);
+      e.append('rect').classed('foreground', true).attr('width', d => d.width).attr('x', d => d.x);
 
       e.append('text').classed('name', true)
+        .attr('text-anchor', 'middle')
         .attr('dominant-baseline', 'middle')
+        .attr('x', width / 2 - blockPadding)
+        .attr('y', blockSpacing / 2)
         .text(({name}: any) => `${name.first} ${name.last[0]}`);
+
+      e.filter((d: any) => d.type == TimeBlockType.New).select('text.name').attr('x', width / 2);
 
       e.append('text')
         .classed('arrival time', true)
         .attr('dominant-baseline', 'middle')
+        .attr('x', blockPadding)
         .attr('y', blockSpacing / 2)
-        .text((d: any) => d.type == TimeBlockType.New ? 'Just Now' : formatHours(d.enter || d.typicalEnter));
 
-      s = e.merge(s as any)
+      let updateOld = s;
+      s = e.merge(s as any);
+      let updateNew = s;
 
-      s.transition()
-        .delay((_, i, arr) => (arr.length - i) * 100)
-        .ease(d3.easeCircleOut)
-        .attr('transform', (_, i) => `translate(0,${i * blockSpacing})`)
+      const t = d3.transition();
 
       s.selectAll('rect').attr('height', blockHeight);
 
-      s.select('rect.background')
-        .attr('width', (d: any) => {
-          const x = timeScale(d.typicalExit);
-          if (d.type == TimeBlockType.Upcoming) {
-            return width - x;
-          }
-          return x - d.x;
-        })
-        .attr('x', (d: any) => d.x);
+      {
+        let ss = s.select('rect.background')
+        if (animate) {
+          ss = ss.transition(t) as any;
+        }
+        ss.attr('width', (d: any) => {
+            const x = timeScale(d.typicalExit);
+            if (d.type == TimeBlockType.Upcoming) {
+              return width - x;
+            }
+            return x - d.x;
+          })
+          .attr('x', (d: any) => d.x);
+      }
+      {
+        let ss = s.select('rect.foreground')
+        if (animate) {
+          ss = ss.transition(t) as any;
+        }
+        ss.attr('width', (d: any) => d.width)
+          .attr('x', (d: any) => d.x)
+          .attr('fill', (d: any) => {
+            return d.type == TimeBlockType.Active ?
+            colors.darkBlue : d.type == TimeBlockType.New ?
+            colors.lightGreen : colors.lightBlue;
+          });
+      }
 
-      s.select('rect.foreground')
-        .attr('width', (d: any) => d.width)
-        .attr('x', (d: any) => d.x)
-        .attr('fill', (d: any) => d.type == TimeBlockType.Active ?
-          colors.darkBlue : d.type == TimeBlockType.New ?
-          colors.lightGreen : colors.lightBlue);
+      {
+        let ss = s.select('text.name');
+        ss.attr('text-anchor', 'end');
 
-      s.select('text.name').attr('text-anchor', (d: any) => d.type == TimeBlockType.New ? 'middle' : 'end')
-        .attr('x', width / 2 - padding)
-        .attr('y', blockHeight / 2 + blockPadding / 2);
+        if (animate) {
+          ss = ss.transition(t) as any;
+        }
+        ss.attr('x', width / 2 - blockPadding)
+          .attr('y', blockSpacing / 2);
 
-      s.filter((d: any) => d.type == TimeBlockType.Upcoming).select('text.name')
-        .attr('text-anchor', 'start')
-        .attr('x', (d: any) => blockTimeWidth + timeScale(d.typicalEnter) + blockPadding);
+        ss.filter((d: any) => d.type == TimeBlockType.New).attr('text-anchor', 'middle').attr('x', width / 2);
+      }
 
-      s.select('text.arrival').attr('x', (d: any) => (d.type == TimeBlockType.Upcoming ? timeScale(d.typicalEnter) : 0) + blockPadding);
+      {
+        let ss = s.filter((d: any) => d.type == TimeBlockType.Upcoming)
+          .select('text.name')
+          .attr('text-anchor', 'start')
+
+        if (animate) {
+          ss = ss.transition(t) as any;
+        }
+        ss.attr('x', (d: any) => blockTimeWidth + timeScale(d.typicalEnter) + blockPadding);
+
+      }
+      {
+        let ss = s.select('text.arrival')
+          .text((d: any) => d.type == TimeBlockType.New ? 'Just Now' : formatHours(d.enter || d.typicalEnter));
+        if (animate) {
+          ss = ss.transition(t) as any;
+        }
+        ss.attr('x', (d: any) => (d.type == TimeBlockType.Upcoming ? timeScale(d.typicalEnter) : 0) + blockPadding);
+      }
+
+      if (animate) {
+        updateOld = updateOld.transition(t)
+          .ease(d3.easeCircleOut) as any;
+
+        updateNew = updateNew.transition(t)
+          .ease(d3.easeCircleOut) as any;
+      }
+      updateOld.attr('transform', (d: any) => `translate(0,${d.y * blockSpacing})`)
+      updateNew.attr('transform', (d: any) => `translate(0,${d.y * blockSpacing})`)
+
     }
   }
 
-  redraw();
+  redraw(false);
 
   const debounceRedraw = debounce(redraw);
 
@@ -311,10 +394,41 @@ function shuffle(a) {
     return a;
 }
 
+function createButton(sel, text) {
+  const g = sel.append('g');
+  const width = 100;
+  const height = 40;
+  g.append('rect')
+    .attr('width', width)
+    .attr('height', height)
+    .attr('fill', colors.lightGreen);
+  g.append('text')
+    .attr('x', width / 2)
+    .attr('y', height / 2)
+    .attr('dominant-baseline', 'middle')
+    .attr('text-anchor', 'middle')
+    .text(text);
+  return g;
+}
+
+
 function createFakeInfo() {
-    const first = faker.name.firstName();
-    const last = faker.name.lastName();
-    return {name: {first, last}, enter: null, exit: null, typicalEnter: null, typicalExit: null};
+  const id = ++lastId;
+  const first = faker.name.firstName();
+  const last = faker.name.lastName();
+  return {
+    id,
+    name: {first, last},
+    enter: null,
+    exit: null,
+    typicalEnter: null,
+    typicalExit: null,
+    x: 0,
+    y: 0,
+    width: 0,
+    height: 0,
+    type: TimeBlockType.Unknown,
+  };
 }
 
 document.addEventListener('DOMContentLoaded', () => draw());
