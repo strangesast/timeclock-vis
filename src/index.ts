@@ -74,7 +74,13 @@ function draw() {
   const timeScale = d3.scaleTime();
 
   const timeAxis = d3.axisTop(timeScale)
+    .tickFormat(d3.timeFormat('%H:%M'))
+    .tickSize(0)
     .tickPadding(10);
+  const padding = 8;
+  const topBarHeight = 80;
+  const rangeWidth = 2;
+
 
   const dataG = svg.append('g')
     .classed('data', true)
@@ -93,7 +99,11 @@ function draw() {
     .attr('dominant-baseline', 'middle')
     .attr('text-anchor', 'middle');
 
-  topBar.append('g').classed('time-scale', true);
+  const ts = topBar.append('g').classed('axis', true)
+    .attr('transform', `translate(0,${topBarHeight})`)
+    .call(timeAxis);
+  ts.selectAll('.tick > line').remove();
+
 
   const bottomBar = svg.append('g').classed('bottom bar', true);
   bottomBar.append('rect')
@@ -109,19 +119,37 @@ function draw() {
       }
       redraw();
     });
-  createButton(bottomBar, 'Change')
+
+  let interval;
+  let startUpdates = () => {
+    now.setMinutes(now.getMinutes() + 1);
+    const obj = data[0];
+    obj.type = TimeBlockType.Active;
+    redraw();
+    interval = setTimeout(startUpdates, 1000);
+  };
+  createButton(bottomBar, 'Start')
     .attr('transform', 'translate(120,10)')
     .on('click', () => {
-      now.setMinutes(now.getMinutes() + 1);
-      const obj = data[0];
-      obj.type = TimeBlockType.Active;
-      redraw();
-      console.log(obj);
+      clearInterval(interval);
+      startUpdates();
     });
 
+  createButton(bottomBar, 'Stop')
+    .attr('transform', 'translate(230,10)')
+    .on('click', () => {
+      clearInterval(interval);
+    });
 
-  const padding = 8;
-  const rangeWidth = 2;
+  createButton(bottomBar, 'Update')
+    .attr('transform', 'translate(340,10)')
+    .on('click', () => {
+      const obj = data[6];
+      obj.exit = null;
+      obj.enter = new Date(now);
+      obj.type = TimeBlockType.New;
+      redraw();
+    });
 
   function updateTimeScale() {
     // now = new Date();
@@ -149,7 +177,9 @@ function draw() {
     zoom.translateExtent([[0, 0], [width, height]])
       .extent([[0, 0], [width, height]]);
 
-    const topBarHeight = 80;
+
+
+
     topBar.select('rect')
       .attr('width', width)
       .attr('height', topBarHeight);
@@ -186,18 +216,18 @@ function draw() {
         .map(date => ({date, x: timeScale(date)}));
     }
     {
-      let s = topBar.select('g.time-scale').selectAll('.time-step') as any;
-      const e = s.data(times).enter().append('g').classed('time-step', true);
-      e.append('text')
-        .attr('dominant-baseline', 'middle')
-        .attr('text-anchor', 'middle')
-        .text(d => formatHours(d.date));
-      s = e.merge(s).attr('transform', (d) => `translate(${d.x},${topBarHeight/2})`)
+      // let s = topBar.select('g.time-scale').selectAll('.time-step') as any;
+      // const e = s.data(times).enter().append('g').classed('time-step', true);
+      // e.append('text')
+      //   .attr('dominant-baseline', 'middle')
+      //   .attr('text-anchor', 'middle')
+      //   .text(d => formatHours(d.date));
+      // s = e.merge(s).attr('transform', (d) => `translate(${d.x},${topBarHeight/2})`)
 
-      // remove time label near current time
-      s.filter(d => d.x > (width / 2 - currentTimeTextWidth / 2) &&
-          d.x < (width /2 + currentTimeTextWidth / 2)
-      );
+      // // remove time label near current time
+      // s.filter(d => d.x > (width / 2 - currentTimeTextWidth / 2) &&
+      //     d.x < (width /2 + currentTimeTextWidth / 2)
+      // );
     }
 
     {
@@ -213,11 +243,11 @@ function draw() {
       for (let i = 0; i < data.length; i++) {
         const d = data[i];
         d.y = i;
-        if (d.enter && d.exit == null && (now - d.enter) < newThreshold) {
+        if (d.enter != null && d.exit == null && (now - d.enter) < newThreshold) {
           d.type = TimeBlockType.New;
           d.x = width / 2 - newWidth / 2;
           d.width = newWidth;
-        } else if (d.enter && d.exit == null) {
+        } else if (d.enter != null && d.exit == null) {
           d.type = TimeBlockType.Active;
           d.x = timeScale(d.enter);
           d.x = d.x > 0 ? d.x : 0;
@@ -228,11 +258,20 @@ function draw() {
           d.width = width - d.x;
         }
       }
+      data.sort((a, b) => {
+        if (a.type == TimeBlockType.New || b.type == TimeBlockType.New) return 0;
+        if (a.type == TimeBlockType.Active && b.type != TimeBlockType.Active) return -1;
+        if (a.type == TimeBlockType.Active && b.type == TimeBlockType.Active) {
+          return a.enter < b.enter ? 1 : a.enter > b.enter ? -1 : 0;
+        }
+      });
 
       const merging = s.data(data, (d: any) => d.id);
 
       const e = merging.enter()
-        .append('g').classed('record', true).attr('transform', `translate(0,${-blockSpacing})`);
+        .append('g')
+        .classed('record', true)
+        .attr('transform', `translate(0,${-blockSpacing})`);
 
       merging.exit().remove();
 
@@ -248,7 +287,8 @@ function draw() {
         .attr('dominant-baseline', 'middle')
         .attr('x', width / 2 - blockPadding)
         .attr('y', blockSpacing / 2)
-        .text(({name}: any) => `${name.first} ${name.last[0]}`);
+        .text(({name}: any) =>
+          `${name.first} ${name.last[0]}`);
 
       e.filter((d: any) => d.type == TimeBlockType.New).select('text.name').attr('x', width / 2);
 
@@ -264,6 +304,8 @@ function draw() {
 
       const t = d3.transition();
 
+      timeAxis.ticks(5)
+
       s.selectAll('rect').attr('height', blockHeight);
 
       {
@@ -273,10 +315,9 @@ function draw() {
         }
         ss.attr('width', (d: any) => {
             const x = timeScale(d.typicalExit);
-            if (d.type == TimeBlockType.Upcoming) {
-              return width - x;
-            }
-            return x - d.x;
+            let w = d.type == TimeBlockType.Upcoming ? width - x : (x - d.x);
+            w = Math.max(w, 0);
+            return w;
           })
           .attr('x', (d: any) => d.x);
       }
@@ -325,6 +366,19 @@ function draw() {
           ss = ss.transition(t) as any;
         }
         ss.attr('x', (d: any) => (d.type == TimeBlockType.Upcoming ? timeScale(d.typicalEnter) : 0) + blockPadding);
+      }
+      {
+        let ss = topBar.select('g.axis');
+        if (animate) {
+          ss = ss.transition(t) as any;
+        }
+        // filter ticks overlapping current time
+        // ss.selectAll('.tick').filter(function(d) {
+        //   console.log((this as any).getBoundingClientRect())
+        //   return false;
+        // })
+        ss.call(timeAxis.scale(timeScale))
+          .call(g => g.select('.domain').remove());
       }
 
       if (animate) {
