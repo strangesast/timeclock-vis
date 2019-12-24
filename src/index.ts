@@ -417,6 +417,9 @@ function draw() {
   }
 
   redraw(false);
+  startUpdates();
+  // reload every 5 minutes
+  setInterval(() => window.location.reload(true), 2 * 60 * 1000);
 
   const debounceRedraw = debounce(redraw);
 
