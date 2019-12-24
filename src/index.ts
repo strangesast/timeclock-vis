@@ -11,6 +11,7 @@ enum TimeBlockType {
 
 let lastId = 0;
 const fakeNow = new Date(2019, 11, 20, 15, 50, 0);
+// const fakeNow = new Date(2019, 11, 20, 17, 5, 0);
 const fakeData = [
     ...Array.from(Array(9)).map((_, i) => ({y: i, ...createFakeInfo()})),
 ]
@@ -144,11 +145,20 @@ function draw() {
   createButton(bottomBar, 'Update')
     .attr('transform', 'translate(340,10)')
     .on('click', () => {
-      const obj = data[6];
-      obj.exit = null;
-      obj.enter = new Date(now);
-      obj.type = TimeBlockType.New;
-      redraw();
+      let obj;
+      for  (let i = data.length - 1; i > 0; i--) {
+        if (data[i].type !== TimeBlockType.New) {
+          obj = data[i];
+          break;
+        }
+      }
+      if (obj) {
+        obj.exit = null;
+        obj.enter = new Date(now);
+        obj.typicalExit = addHours(now, 1);
+        obj.type = TimeBlockType.New;
+        redraw();
+      }
     });
 
   function updateTimeScale() {
@@ -315,7 +325,17 @@ function draw() {
         }
         ss.attr('width', (d: any) => {
             const x = timeScale(d.typicalExit);
-            let w = d.type == TimeBlockType.Upcoming ? width - x : (x - d.x);
+            let w;
+            switch (d.type) {
+              case TimeBlockType.New:
+                w = 0;
+                break;
+              case TimeBlockType.Upcoming:
+                w = width - x;
+                break;
+              default:
+                w = x - d.x;
+            }
             w = Math.max(w, 0);
             return w;
           })
@@ -345,7 +365,9 @@ function draw() {
         ss.attr('x', width / 2 - blockPadding)
           .attr('y', blockSpacing / 2);
 
-        ss.filter((d: any) => d.type == TimeBlockType.New).attr('text-anchor', 'middle').attr('x', width / 2);
+        ss.filter((d: any) => d.type == TimeBlockType.New)
+          .attr('text-anchor', 'middle')
+          .attr('x', width / 2);
       }
 
       {
@@ -356,7 +378,7 @@ function draw() {
         if (animate) {
           ss = ss.transition(t) as any;
         }
-        ss.attr('x', (d: any) => blockTimeWidth + timeScale(d.typicalEnter) + blockPadding);
+        ss.attr('x', (d: any) => blockTimeWidth + Math.max(timeScale(d.typicalEnter), 0) + blockPadding);
 
       }
       {
@@ -365,7 +387,7 @@ function draw() {
         if (animate) {
           ss = ss.transition(t) as any;
         }
-        ss.attr('x', (d: any) => (d.type == TimeBlockType.Upcoming ? timeScale(d.typicalEnter) : 0) + blockPadding);
+        ss.attr('x', (d: any) => Math.max(d.type == TimeBlockType.Upcoming ? timeScale(d.typicalEnter) : 0, 0) + blockPadding);
       }
       {
         let ss = topBar.select('g.axis');
