@@ -68,11 +68,14 @@ const colors = {
 
 
 function draw() {
-  let now, width, height, innerWidth;
+  let now = new Date(fakeNow);
   let data = fakeData;
 
-  const zoom = d3.zoom().scaleExtent([1, Infinity]).on('zoom', zoomed);
-  const timeScale = d3.scaleTime();
+  const zoom = d3.zoom()
+    .scaleExtent([1, 3])
+    .on('zoom', zoomed);
+  let timeScale = d3.scaleTime()
+    .domain([addHours(now, -2), addHours(now, 2)]);
 
   const timeAxis = d3.axisTop(timeScale)
     .tickFormat(d3.timeFormat('%H:%M'))
@@ -82,7 +85,6 @@ function draw() {
   const topBarHeight = 80;
   const rangeWidth = 2;
 
-
   const dataG = svg.append('g')
     .classed('data', true)
 
@@ -91,6 +93,7 @@ function draw() {
     .attr('fill', 'none');
 
   dataG.call(zoom);
+    // .on('wheel.zoom', wheeled);
 
   const topBar = svg.append('g').classed('top bar', true);
   topBar.append('rect').attr('fill', colors.lightBlue);
@@ -100,10 +103,10 @@ function draw() {
     .attr('dominant-baseline', 'middle')
     .attr('text-anchor', 'middle');
 
-  const ts = topBar.append('g').classed('axis', true)
+  topBar.append('g').classed('axis', true)
     .attr('transform', `translate(0,${topBarHeight})`)
-    .call(timeAxis);
-  ts.selectAll('.tick > line').remove();
+    .call(timeAxis)
+    .selectAll('.tick > line').remove();
 
 
   const bottomBar = svg.append('g').classed('bottom bar', true);
@@ -124,6 +127,7 @@ function draw() {
   let interval;
   let startUpdates = () => {
     now.setMinutes(now.getMinutes() + 1);
+    timeScale.domain([addHours(now, -2), addHours(now, 2)]);
     const obj = data[0];
     obj.type = TimeBlockType.Active;
     redraw();
@@ -161,34 +165,35 @@ function draw() {
       }
     });
 
-  function updateTimeScale() {
-    // now = new Date();
-    now = fakeNow;
-    const [a, b] = [addHours(now, -rangeWidth/2), addHours(now, rangeWidth/2)];
-    timeScale.domain([a, b]).range([padding, padding + innerWidth]);
-  }
+  let {width, height} = (svg.node() as SVGElement).getBoundingClientRect();
+  let innerWidth = width - padding * 2;
 
-  function updateDimensions() {
-    ({width, height} = (svg.node() as SVGElement).getBoundingClientRect());
-    innerWidth = width - padding * 2;
+  timeScale.range([padding, padding + innerWidth]);
+  timeAxis.scale(timeScale);
+
+  function wheeled() {
+    const {shiftKey, deltaX, transform} = d3.event;
+    console.log(deltaX);
+    if (!shiftKey) {
+      dataG.call(zoom.translateBy, d3.event.deltaX);
+    } else {
+      dataG.call(zoom, transform);
+    }
   }
 
   function zoomed() {
-    console.log(d3.event.x);
-    console.log(timeScale.invert(d3.event.transform.x));
-    //timeScale = t.rescaleX(timeScale);
-    //redraw();
-    // timeScale.domain(t.domain());
+    const {transform} = d3.event;
+    timeScale = transform.rescaleX(timeScale);
+    timeAxis.scale(timeScale)
+    redraw();
   }
 
   function redraw(animate = true) {
-    updateDimensions();
-    updateTimeScale();
+    ({width, height} = (svg.node() as SVGElement).getBoundingClientRect());
+    innerWidth = width - padding * 2;
+
     zoom.translateExtent([[0, 0], [width, height]])
       .extent([[0, 0], [width, height]]);
-
-
-
 
     topBar.select('rect')
       .attr('width', width)
@@ -216,30 +221,6 @@ function draw() {
       const bbox = (currentTimeText.node() as any).getBBox();
       currentTimeTextWidth = bbox.width + padding * 2;
     }
-
-    let times;
-    {
-      const thisHour = floorHours(now);
-      times = Array.from(Array(8)) // TODO: fix this constant '8'
-        .map((_, i) => (i - 2)/2)
-        .map(h => addHours(thisHour, Math.floor(h), Math.sign(h) * h % 1 * 60))
-        .map(date => ({date, x: timeScale(date)}));
-    }
-    {
-      // let s = topBar.select('g.time-scale').selectAll('.time-step') as any;
-      // const e = s.data(times).enter().append('g').classed('time-step', true);
-      // e.append('text')
-      //   .attr('dominant-baseline', 'middle')
-      //   .attr('text-anchor', 'middle')
-      //   .text(d => formatHours(d.date));
-      // s = e.merge(s).attr('transform', (d) => `translate(${d.x},${topBarHeight/2})`)
-
-      // // remove time label near current time
-      // s.filter(d => d.x > (width / 2 - currentTimeTextWidth / 2) &&
-      //     d.x < (width /2 + currentTimeTextWidth / 2)
-      // );
-    }
-
     {
       let s = dataG.selectAll('g.record');
 
@@ -253,7 +234,7 @@ function draw() {
       for (let i = 0; i < data.length; i++) {
         const d = data[i];
         d.y = i;
-        if (d.enter != null && d.exit == null && (now - d.enter) < newThreshold) {
+        if (d.enter != null && d.exit == null && (+now - d.enter) < newThreshold) {
           d.type = TimeBlockType.New;
           d.x = width / 2 - newWidth / 2;
           d.width = newWidth;
@@ -290,17 +271,17 @@ function draw() {
         .classed('background', true)
         .attr('fill', colors.lightBlue);
 
-      e.append('rect').classed('foreground', true).attr('width', d => d.width).attr('x', d => d.x);
+      e.append('rect').classed('foreground', true)
+        .attr('width', d => d.width)
+        .attr('x', d => d.x);
 
       e.append('text').classed('name', true)
         .attr('text-anchor', 'middle')
         .attr('dominant-baseline', 'middle')
-        .attr('x', width / 2 - blockPadding)
-        .attr('y', blockSpacing / 2)
         .text(({name}: any) =>
           `${name.first} ${name.last[0]}`);
 
-      e.filter((d: any) => d.type == TimeBlockType.New).select('text.name').attr('x', width / 2);
+      e.filter((d: any) => d.type == TimeBlockType.New).select('text.name').attr('x', width / 2).attr('y', blockSpacing / 2);
 
       e.append('text')
         .classed('arrival time', true)
@@ -309,12 +290,12 @@ function draw() {
         .attr('y', blockSpacing / 2)
 
       let updateOld = s;
+
       s = e.merge(s as any);
+
       let updateNew = s;
 
       const t = d3.transition();
-
-      timeAxis.ticks(5)
 
       s.selectAll('rect').attr('height', blockHeight);
 
@@ -349,22 +330,23 @@ function draw() {
         ss.attr('width', (d: any) => d.width)
           .attr('x', (d: any) => d.x)
           .attr('fill', (d: any) => {
-            return d.type == TimeBlockType.Active ?
-            colors.darkBlue : d.type == TimeBlockType.New ?
-            colors.lightGreen : colors.lightBlue;
+            return d.type == TimeBlockType.Active ? colors.darkBlue :
+              d.type == TimeBlockType.New ? colors.lightGreen :
+              colors.lightBlue;
           });
       }
 
       {
         let ss = s.select('text.name');
         ss.attr('text-anchor', 'end');
+        ss.filter((d: any) => d.type == TimeBlockType.New).select('text.name').attr('x', width / 2);
 
         if (animate) {
           ss = ss.transition(t) as any;
         }
+
         ss.attr('x', width / 2 - blockPadding)
           .attr('y', blockSpacing / 2);
-
         ss.filter((d: any) => d.type == TimeBlockType.New)
           .attr('text-anchor', 'middle')
           .attr('x', width / 2);
@@ -378,29 +360,27 @@ function draw() {
         if (animate) {
           ss = ss.transition(t) as any;
         }
-        ss.attr('x', (d: any) => blockTimeWidth + Math.max(timeScale(d.typicalEnter), 0) + blockPadding);
 
+        ss.attr('x', (d: any) => blockTimeWidth + Math.max(timeScale(d.typicalEnter), 0) + blockPadding);
       }
       {
         let ss = s.select('text.arrival')
           .text((d: any) => d.type == TimeBlockType.New ? 'Just Now' : formatHours(d.enter || d.typicalEnter));
+
         if (animate) {
           ss = ss.transition(t) as any;
         }
+
         ss.attr('x', (d: any) => Math.max(d.type == TimeBlockType.Upcoming ? timeScale(d.typicalEnter) : 0, 0) + blockPadding);
       }
       {
         let ss = topBar.select('g.axis');
+
         if (animate) {
           ss = ss.transition(t) as any;
         }
-        // filter ticks overlapping current time
-        // ss.selectAll('.tick').filter(function(d) {
-        //   console.log((this as any).getBoundingClientRect())
-        //   return false;
-        // })
-        ss.call(timeAxis.scale(timeScale))
-          .call(g => g.select('.domain').remove());
+
+        ss.call(timeAxis);
       }
 
       if (animate) {
@@ -410,16 +390,19 @@ function draw() {
         updateNew = updateNew.transition(t)
           .ease(d3.easeCircleOut) as any;
       }
+
       updateOld.attr('transform', (d: any) => `translate(0,${d.y * blockSpacing})`)
       updateNew.attr('transform', (d: any) => `translate(0,${d.y * blockSpacing})`)
-
     }
   }
 
   redraw(false);
-  startUpdates();
+
+  // automatically move time
+  //startUpdates();
+
   // reload every 5 minutes
-  setInterval(() => window.location.reload(true), 2 * 60 * 1000);
+  //setInterval(() => window.location.reload(true), 2 * 60 * 1000);
 
   const debounceRedraw = debounce(redraw);
 
@@ -428,7 +411,7 @@ function draw() {
   });
 };
 
-function debounce(fn, time = 100) {
+function debounce(fn: () => any, time = 100) {
     let i = null;
     return function(now = false) {
         clearTimeout(i);
