@@ -69,6 +69,7 @@ const colors = {
 
 function draw() {
   let now = new Date(fakeNow);
+
   let data = fakeData;
 
   const zoom = d3.zoom()
@@ -127,7 +128,8 @@ function draw() {
   let interval;
   let startUpdates = () => {
     now.setMinutes(now.getMinutes() + 1);
-    timeScale.domain([addHours(now, -2), addHours(now, 2)]);
+    const [a, b] = timeScale.domain();
+    timeScale.domain([addHours(a, 0, 1), addHours(b, 0, 1)]);
     const obj = data[0];
     obj.type = TimeBlockType.Active;
     redraw();
@@ -150,7 +152,7 @@ function draw() {
     .attr('transform', 'translate(340,10)')
     .on('click', () => {
       let obj;
-      for  (let i = data.length - 1; i > 0; i--) {
+      for  (let i = data.length - 1; i >= 0; i--) {
         if (data[i].type !== TimeBlockType.New) {
           obj = data[i];
           break;
@@ -185,7 +187,7 @@ function draw() {
     const {transform} = d3.event;
     timeScale = transform.rescaleX(timeScale);
     timeAxis.scale(timeScale)
-    redraw();
+    redraw(false);
   }
 
   function redraw(animate = true) {
@@ -236,13 +238,13 @@ function draw() {
         d.y = i;
         if (d.enter != null && d.exit == null && (+now - d.enter) < newThreshold) {
           d.type = TimeBlockType.New;
-          d.x = width / 2 - newWidth / 2;
+          d.x = timeScale(now);
           d.width = newWidth;
         } else if (d.enter != null && d.exit == null) {
           d.type = TimeBlockType.Active;
-          d.x = timeScale(d.enter);
-          d.x = d.x > 0 ? d.x : 0;
-          d.width = width / 2 - d.x;
+          d.x = timeScale(d.exit != null ? d.exit : now);  // added for later
+          d.x = Math.max(d.x, 0); // hack
+          d.width = d.x - timeScale(d.enter);
         } else if (d.enter == null) {
           d.type = TimeBlockType.Upcoming;
           d.x = timeScale(d.typicalEnter);
@@ -271,9 +273,9 @@ function draw() {
         .classed('background', true)
         .attr('fill', colors.lightBlue);
 
-      e.append('rect').classed('foreground', true)
-        .attr('width', d => d.width)
-        .attr('x', d => d.x);
+      e.append('rect').classed('foreground', true);
+        // .attr('width', d => d.width)
+        // .attr('x', d => d.x - d.width);
 
       e.append('text').classed('name', true)
         .attr('text-anchor', 'middle')
@@ -281,7 +283,10 @@ function draw() {
         .text(({name}: any) =>
           `${name.first} ${name.last[0]}`);
 
-      e.filter((d: any) => d.type == TimeBlockType.New).select('text.name').attr('x', width / 2).attr('y', blockSpacing / 2);
+      e.filter((d: any) => d.type == TimeBlockType.New)
+        .select('text.name')
+        // .attr('x', width / 2)
+        // .attr('y', blockSpacing / 2);
 
       e.append('text')
         .classed('arrival time', true)
@@ -328,7 +333,7 @@ function draw() {
           ss = ss.transition(t) as any;
         }
         ss.attr('width', (d: any) => d.width)
-          .attr('x', (d: any) => d.x)
+          .attr('x', (d: any) => d.x - d.width + (d.type === TimeBlockType.New ? d.width / 2 : 0))
           .attr('fill', (d: any) => {
             return d.type == TimeBlockType.Active ? colors.darkBlue :
               d.type == TimeBlockType.New ? colors.lightGreen :
@@ -339,17 +344,19 @@ function draw() {
       {
         let ss = s.select('text.name');
         ss.attr('text-anchor', 'end');
-        ss.filter((d: any) => d.type == TimeBlockType.New).select('text.name').attr('x', width / 2);
+        ss.filter((d: any) => d.type == TimeBlockType.New)
+          .select('text.name')
+          .attr('x', (d: any) => d.x)
 
         if (animate) {
           ss = ss.transition(t) as any;
         }
 
-        ss.attr('x', width / 2 - blockPadding)
+        ss.attr('x', (d: any) => d.x - blockPadding)
           .attr('y', blockSpacing / 2);
+
         ss.filter((d: any) => d.type == TimeBlockType.New)
           .attr('text-anchor', 'middle')
-          .attr('x', width / 2);
       }
 
       {
