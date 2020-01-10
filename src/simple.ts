@@ -1,87 +1,168 @@
 import * as d3 from 'd3';
-import * as faker from 'faker';
-
-const svg = d3.select('svg');
-
-document.addEventListener('DOMContentLoaded', () => {
-  console.log(getData(new Date())[0]);
-});
+import { getData, ShiftState } from './data';
 
 
-function getData(date: Date, length = 10) {
-  let id = 0;
-  // complete, in progress, upcoming fractions. total of 'length' data
-  const a = Math.floor(length / 5);
-  const c = Math.floor(length / 5);
-  const b = length - a - c;
+document.addEventListener('DOMContentLoaded', () => main());
 
-  return [
-    ...Array(a).fill(ShiftState.Complete),
-    ...Array(b).fill(ShiftState.InProgress),
-    ...Array(c).fill(ShiftState.Upcoming),
-  ].map(shiftState => {
-    const [first, last] = [faker.name.firstName(), faker.name.lastName()];
-    return {
-      employee: {name: {first, last}, id: ++id },
-      shift: createFakeShift(shiftState, date),
-    };
-  });
-}
+const colors = {
+    lightBlue: '#cfe2f3',
+    darkBlue: '#6fa8dc',
+    lightGreen: '#93c47d',
+};
 
-enum ShiftState {
-  Complete = 0,
-  InProgress = 1,
-  Upcoming = 2,
-}
+function main() {
+  const now = new Date();
+  const data = getData(now);
 
-function createFakeShift(shiftState: ShiftState, date: Date) {
-  const shift = {
-    typical: {start: null, end: null, total: null},
-    actual: {start: null, end: null, total: null},
-    state: shiftState,
-  };
-  switch (shiftState) {
-    case ShiftState.Complete: {
-      const duration = fuzzy(8);
-      const timePast = fuzzy(4);
-      shift.actual.end = new Date(+date - timePast * 3.6e6);
-      shift.typical.end = new Date(roundDateTo(shift.actual.end, 4, true));
-      shift.actual.start = new Date(+date - (timePast + duration) * 3.6e6);
-      shift.typical.start = new Date(roundDateTo(shift.actual.start, 4, false));
-      shift.actual.total = (+shift.actual.end - shift.actual.start) / 3.6e6;
-      shift.typical.total = (+shift.typical.end - shift.typical.start) / 3.6e6;
-      break;
-    }
-    case ShiftState.InProgress: {
-      const timePast = fuzzy(2);
-      const duration = fuzzy(8);
-      shift.actual.start = new Date(+date - timePast * 3.6e6);
-      shift.typical.start = new Date(roundDateTo(shift.actual.start, 4, false));
-      shift.actual.end = null;
-      shift.typical.end = new Date(+shift.typical.start + duration * 3.6e6);
-      break;
-    }
-    case ShiftState.Upcoming: {
-      const timePast = fuzzy(4);
-      const duration = fuzzy(8);
-      shift.actual.start = null;
-      shift.typical.start = new Date(roundDateTo(+date + timePast * 3.6e6, 4, true));
-      shift.actual.end = null;
-      shift.typical.end = roundDateTo(+shift.typical.start + duration * 3.6e6, 4, false);
-      break;
+
+  const svg = d3.select('svg');
+
+  const {width, height} = (svg.node() as any).getBoundingClientRect();
+
+  const recordHeight = 40;
+
+  const zoom = d3.zoom().on('zoom', zoomed);
+  const timeScale = d3.scaleTime()
+    .range([0, width])
+    .domain(centerOnDate(now));
+
+  let timeAxis = d3.axisTop(timeScale);
+
+  svg.append('g').classed('x', true)
+    .call(timeAxis)
+    .attr('transform', `translate(0,${recordHeight})`);
+
+
+  console.log(ShiftState);
+  console.log(data);
+  svg.append('g')
+    .classed('records', true)
+    .attr('transform', `translate(0,${recordHeight})`)
+    .selectAll('.record').data(data, (d: any) => d.id)
+    .join(
+      enter => enter.append('g')
+        .classed('record', true)
+        .call(s => {
+          s.append('rect').classed('fg', true).attr('height', recordHeight)
+            .append('title').text(d => d.employee.name.first + ' ' + d.employee.name.last)
+          s.append('text')
+            .attr('y', recordHeight / 2)
+            .classed('name', true)
+            .text(d => d.employee.name.first + ' ' + d.employee.name.last)
+          s.append('text')
+            .attr('y', recordHeight / 2)
+            .classed('time start', true)
+            .text(d => formatTime(d.shift.state === ShiftState.Upcoming ? d.shift.typical.start : d.shift.actual.start));
+          s.append('text')
+            .attr('y', recordHeight / 2)
+            .classed('time end', true)
+            .text(d => formatTime(d.shift.state === ShiftState.Complete ? d.shift.actual.end : d.shift.typical.end));
+          return s;
+        }),
+      update => update,
+      exit => exit.remove(),
+    )
+    .each(g(timeScale));
+
+  function g(scale) {
+    return function f(d, i) {
+      const { state, actual, typical } = d.shift;
+      switch (state) {
+        case ShiftState.InProgress: {
+          const [x, x0] = [scale(actual.start), scale(now)];
+          const x1 = scale(typical.end);
+          d.pos.x = x;
+          d.pos.y = 2 + i * (recordHeight + 2);
+          d.pos.w = x0 - x;
+          d.pos.w1 = x1 - x;
+          break;
+        }
+        case ShiftState.Complete: {
+          const [x0, x1] = [scale(actual.start), scale(actual.end)];
+          d.pos.x = x0;
+          d.pos.y = 2 + i * (recordHeight + 2);
+          d.pos.w = x1 - x0;
+          break;
+        }
+        case ShiftState.Upcoming: {
+          const [x0, x1] = [scale(typical.start), scale(typical.end)];
+          d.pos.x = x0;
+          d.pos.y = 2 + i * (recordHeight + 2);
+          d.pos.w = x1 - x0;
+          break;
+        }
+      }
+      const sel = d3.select(this);
+      sel.select('text.name')
+        .attr('text-anchor', 'middle')
+        .attr('alignment-baseline', 'middle')
+        .attr('transform', (d: any) => `translate(${d.pos.x + (d.shift.state === ShiftState.InProgress ? d.pos.w1 : d.pos.w) / 2},${d.pos.y})`);
+      sel.select('text.time.start')
+        .attr('text-anchor', 'start')
+        .attr('alignment-baseline', 'middle')
+        .attr('transform', (d: any) => `translate(${d.pos.x},${d.pos.y})`);
+      sel.select('text.time.end')
+        .attr('text-anchor', 'end')
+        .attr('alignment-baseline', 'middle')
+        .attr('transform', (d: any) => `translate(${d.pos.x + (d.shift.state === ShiftState.InProgress ? d.pos.w1 : d.pos.w)},${d.pos.y})`);
+      sel.select('rect.fg')
+        .attr('fill', (d: any) => d.shift.state !== ShiftState.Upcoming ? colors.darkBlue: colors.lightBlue)
+        .attr('transform', (d: any) => `translate(${d.pos.x},${d.pos.y})`)
+        .attr('width', (d: any) => d.pos.w);
+      sel.filter((d: any) => d.shift.state === ShiftState.InProgress).append('rect')
+        .attr('height', recordHeight).classed('bg', true);
+      sel.select('rect.bg')
+        .attr('fill', colors.lightBlue)
+        .attr('transform', (d: any) => `translate(${d.pos.x},${d.pos.y})`)
+        .attr('width', (d: any) => d.pos.w1)
+        .lower()
     }
   }
-  return shift;
+
+  function zoomed() {
+    const newTimeScale = d3.event.transform.rescaleX(timeScale);
+    timeAxis = timeAxis.scale(newTimeScale);
+    const [a, b] = timeAxis.scale().domain().map(d => (d as Date).toISOString());
+
+    svg.select('g.x').call(timeAxis);
+    svg.select('g.records').selectAll('g.record').each(g(newTimeScale));
+  }
+
+  svg.call(zoom);
+
+  // const s = g.selectAll('.record').data(data, (d: any) => d.id)
+  //   .join(
+  //     enter => enter.append('g'),
+  //     update => update.call(sel => sel.select('g.fg')),
+  //     exit => exit.remove(),
+  //   );
+
+
+  // complete
+  // upcoming
+  // inprogress
+
+  // handle scale changes (linear, log)
+
+  // handle zooming
+
+  // handle more / different data
+  //    different zoom region
+  //    time passing
 }
 
-function roundDateTo(date: Date|number, den = 4, roundDown = true): Date {
+function formatTime(d: Date): string {
+  return `${d.getHours() || 12}:${('0' + d.getMinutes()).slice(-2)}`;
+}
+
+
+function centerOnDate(date: Date, hoursWidth = 8): [Date, Date] {
+  return [addHours(date, -hoursWidth / 2), addHours(date, hoursWidth / 2)];
+}
+
+function addHours(date: Date, hours: number): Date {
   const d = new Date(date);
-  d.setMilliseconds(0);
-  d.setSeconds(0);
-  d.setMinutes(Math.floor(d.getMinutes() / 15 + (roundDown ? 0 : 1)) * 15);
+  d.setHours(d.getHours() + hours);
   return d;
 }
 
-function fuzzy(num: number): number {
-  return num * (0.9 + 0.2 * Math.random());
-}
