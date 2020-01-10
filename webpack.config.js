@@ -1,15 +1,28 @@
 const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin')
+const package = require('./package.json')
 
 
 module.exports = {
   mode: 'development',
-  entry: './src/index.ts',
+  entry: {
+    index: './src/index.ts',
+    simple: './src/simple.ts',
+    vendor: Object.keys(package.dependencies),
+  },
   plugins: [
     new HtmlWebpackPlugin({
       title: 'Timeclock',
-      template: 'src/index.html'
-    })
+      chunks: ['vendor', 'index'],
+      template: 'src/index.html',
+      filename: 'index.html',
+    }),
+    new HtmlWebpackPlugin({
+      title: 'Simple',
+      chunks: ['vendor', 'simple'],
+      template: 'src/simple.html',
+      filename: 'simple.html',
+    }),
   ],
   module: {
     rules: [
@@ -26,7 +39,6 @@ module.exports = {
     extensions: ['.ts', '.js']
   },
   output: {
-    filename: 'bundle.js',
-    path: path.resolve(__dirname, 'dist')
+    filename: '[name].bundle.js',
   }
 };
