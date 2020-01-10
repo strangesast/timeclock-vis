@@ -22,9 +22,11 @@ function main() {
   const recordHeight = 40;
 
   const zoom = d3.zoom().on('zoom', zoomed);
-  const timeScale = d3.scaleTime()
+  let timeScale = d3.scaleTime()
     .range([0, width])
     .domain(centerOnDate(now));
+
+  const timeScaleCopy = timeScale.copy();
 
   let timeAxis = d3.axisTop(timeScale);
 
@@ -32,18 +34,18 @@ function main() {
     .call(timeAxis)
     .attr('transform', `translate(0,${recordHeight})`);
 
-
-  console.log(ShiftState);
-  console.log(data);
   svg.append('g')
     .classed('records', true)
     .attr('transform', `translate(0,${recordHeight})`)
-    .selectAll('.record').data(data, (d: any) => d.id)
+    .selectAll('.record')
+    .data(data, (d: any) => d.id)
     .join(
       enter => enter.append('g')
         .classed('record', true)
         .call(s => {
-          s.append('rect').classed('fg', true).attr('height', recordHeight)
+          s.append('rect')
+            .classed('fg', true)
+            .attr('height', recordHeight)
             .append('title').text(d => d.employee.name.first + ' ' + d.employee.name.last)
           s.append('text')
             .attr('y', recordHeight / 2)
@@ -62,70 +64,68 @@ function main() {
       update => update,
       exit => exit.remove(),
     )
-    .each(g(timeScale));
+    .each(fn);
 
-  function g(scale) {
-    return function f(d, i) {
-      const { state, actual, typical } = d.shift;
-      switch (state) {
-        case ShiftState.InProgress: {
-          const [x, x0] = [scale(actual.start), scale(now)];
-          const x1 = scale(typical.end);
-          d.pos.x = x;
-          d.pos.y = 2 + i * (recordHeight + 2);
-          d.pos.w = x0 - x;
-          d.pos.w1 = x1 - x;
-          break;
-        }
-        case ShiftState.Complete: {
-          const [x0, x1] = [scale(actual.start), scale(actual.end)];
-          d.pos.x = x0;
-          d.pos.y = 2 + i * (recordHeight + 2);
-          d.pos.w = x1 - x0;
-          break;
-        }
-        case ShiftState.Upcoming: {
-          const [x0, x1] = [scale(typical.start), scale(typical.end)];
-          d.pos.x = x0;
-          d.pos.y = 2 + i * (recordHeight + 2);
-          d.pos.w = x1 - x0;
-          break;
-        }
+  function fn(d, i) {
+    const { state, actual, typical } = d.shift;
+    switch (state) {
+      case ShiftState.InProgress: {
+        const [x, x0] = [timeScale(actual.start), timeScale(now)];
+        const x1 = timeScale(typical.end);
+        d.pos.x = x;
+        d.pos.y = 2 + i * (recordHeight + 2);
+        d.pos.w = x0 - x;
+        d.pos.w1 = x1 - x;
+        break;
       }
-      const sel = d3.select(this);
-      sel.select('text.name')
-        .attr('text-anchor', 'middle')
-        .attr('alignment-baseline', 'middle')
-        .attr('transform', (d: any) => `translate(${d.pos.x + (d.shift.state === ShiftState.InProgress ? d.pos.w1 : d.pos.w) / 2},${d.pos.y})`);
-      sel.select('text.time.start')
-        .attr('text-anchor', 'start')
-        .attr('alignment-baseline', 'middle')
-        .attr('transform', (d: any) => `translate(${d.pos.x},${d.pos.y})`);
-      sel.select('text.time.end')
-        .attr('text-anchor', 'end')
-        .attr('alignment-baseline', 'middle')
-        .attr('transform', (d: any) => `translate(${d.pos.x + (d.shift.state === ShiftState.InProgress ? d.pos.w1 : d.pos.w)},${d.pos.y})`);
-      sel.select('rect.fg')
-        .attr('fill', (d: any) => d.shift.state !== ShiftState.Upcoming ? colors.darkBlue: colors.lightBlue)
-        .attr('transform', (d: any) => `translate(${d.pos.x},${d.pos.y})`)
-        .attr('width', (d: any) => d.pos.w);
-      sel.filter((d: any) => d.shift.state === ShiftState.InProgress).append('rect')
-        .attr('height', recordHeight).classed('bg', true);
-      sel.select('rect.bg')
-        .attr('fill', colors.lightBlue)
-        .attr('transform', (d: any) => `translate(${d.pos.x},${d.pos.y})`)
-        .attr('width', (d: any) => d.pos.w1)
-        .lower()
+      case ShiftState.Complete: {
+        const [x, x0] = [timeScale(actual.start), timeScale(actual.end)];
+        d.pos.x = x;
+        d.pos.y = 2 + i * (recordHeight + 2);
+        d.pos.w = x0 - x;
+        break;
+      }
+      case ShiftState.Upcoming: {
+        const [x, x0] = [timeScale(typical.start), timeScale(typical.end)];
+        d.pos.x = x;
+        d.pos.y = 2 + i * (recordHeight + 2);
+        d.pos.w = x0 - x;
+        break;
+      }
     }
+    const sel = d3.select(this);
+    sel.select('text.name')
+      .attr('text-anchor', 'middle')
+      .attr('alignment-baseline', 'middle')
+      .attr('transform', (d: any) => `translate(${d.pos.x + (d.shift.state === ShiftState.InProgress ? d.pos.w1 : d.pos.w) / 2},${d.pos.y})`);
+    sel.select('text.time.start')
+      .attr('text-anchor', 'start')
+      .attr('alignment-baseline', 'middle')
+      .attr('transform', (d: any) => `translate(${d.pos.x},${d.pos.y})`);
+    sel.select('text.time.end')
+      .attr('text-anchor', 'end')
+      .attr('alignment-baseline', 'middle')
+      .attr('transform', (d: any) => `translate(${d.pos.x + (d.shift.state === ShiftState.InProgress ? d.pos.w1 : d.pos.w)},${d.pos.y})`);
+    sel.select('rect.fg')
+      .attr('fill', (d: any) => d.shift.state !== ShiftState.Upcoming ? colors.darkBlue: colors.lightBlue)
+      .attr('transform', (d: any) => `translate(${d.pos.x},${d.pos.y})`)
+      .attr('width', (d: any) => d.pos.w);
+    sel.filter((d: any) => d.shift.state === ShiftState.InProgress).append('rect')
+      .attr('height', recordHeight).classed('bg', true);
+    sel.select('rect.bg')
+      .attr('fill', colors.lightBlue)
+      .attr('transform', (d: any) => `translate(${d.pos.x},${d.pos.y})`)
+      .attr('width', (d: any) => d.pos.w1)
+      .lower()
   }
 
   function zoomed() {
-    const newTimeScale = d3.event.transform.rescaleX(timeScale);
-    timeAxis = timeAxis.scale(newTimeScale);
+    timeScale = d3.event.transform.rescaleX(timeScaleCopy);
+    timeAxis = timeAxis.scale(timeScale);
     const [a, b] = timeAxis.scale().domain().map(d => (d as Date).toISOString());
 
     svg.select('g.x').call(timeAxis);
-    svg.select('g.records').selectAll('g.record').each(g(newTimeScale));
+    svg.select('g.records').selectAll('g.record').each(fn);
   }
 
   svg.call(zoom);
