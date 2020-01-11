@@ -28,8 +28,8 @@ async def main():
         employees = {}
         async for o in get_employees(conn):
             employees[o['id']] = o
-        #with open('./data/employees.json', 'w', encoding='utf-8') as f:
-        #    json.dump(employees, f, ensure_ascii=False, indent=2, default = converter)
+        with open('./data/employees.json', 'w', encoding='utf-8') as f:
+            json.dump(employees, f, ensure_ascii=False, indent=2, default = converter)
         
         #async with conn.cursor(aiomysql.DictCursor) as cur:
         #    await cur.execute('select id,ClockDate,Date,InsertDate,inf_employee_id from tr_clock order by inf_employee_id,ClockDate');
@@ -59,12 +59,15 @@ async def main():
                     yield val
 
             shifts = [];
+            last_shift_id = 0;
             async for inf_employee_id, i in groupby(it(), key=lambda o: o['inf_employee_id']):
-                for pair in pairwise(i):
+                for pair in grouper(i):
                     a, b = pair
                     if a['Date'] is None:
                         print(a)
+                    last_shift_id += 1
                     shift = {
+                            'id': last_shift_id,
                             'employee': inf_employee_id,
                             'start': a['Date'],
                             'end': b and b['Date']
@@ -125,12 +128,11 @@ async def main():
     await pool.wait_closed()
 
 
-def pairwise(iterable):
-    "s -> (s0,s1), (s1,s2), (s2, s3), ..."
-    a, b = tee(iterable)
-    next(b, None)
-    return zip_longest(a, b)
-
+def grouper(iterable, n=2, fillvalue=None):
+    "Collect data into fixed-length chunks or blocks"
+    # grouper('ABCDEFG', 3, 'x') --> ABC DEF Gxx"
+    args = [iter(iterable)] * n
+    return zip_longest(*args, fillvalue=fillvalue)
 
 
 SPACINGS = [4, 20, 20, 20, 4, 4, 20]

@@ -1,8 +1,15 @@
 import * as d3 from 'd3';
 import { getData, ShiftState } from './data';
+import * as Comlink from 'comlink';
 
+const worker = new Worker('./data.worker.ts', { type: 'module' });
+const obj = Comlink.wrap(worker) as any;
 
-document.addEventListener('DOMContentLoaded', () => main());
+// worker.postMessage('toast');
+
+document.addEventListener('DOMContentLoaded', async () => {
+  main();
+});
 
 const colors = {
     lightBlue: '#cfe2f3',
@@ -11,9 +18,8 @@ const colors = {
 };
 
 function main() {
-  const now = new Date();
-  const data = getData(now);
-
+  const now = new Date(2020, 0, 3, 12, 0, 0, 0);
+  let data = getData(now);
 
   const svg = d3.select('svg');
 
@@ -21,10 +27,12 @@ function main() {
 
   const recordHeight = 40;
 
+  const firstDateRange = centerOnDate(now);
+
   const zoom = d3.zoom().on('zoom', zoomed);
   let timeScale = d3.scaleTime()
     .range([0, width])
-    .domain(centerOnDate(now));
+    .domain(firstDateRange);
 
   const timeScaleCopy = timeScale.copy();
 
@@ -37,34 +45,67 @@ function main() {
   svg.append('g')
     .classed('records', true)
     .attr('transform', `translate(0,${recordHeight})`)
-    .selectAll('.record')
-    .data(data, (d: any) => d.id)
-    .join(
-      enter => enter.append('g')
-        .classed('record', true)
-        .call(s => {
-          s.append('rect')
-            .classed('fg', true)
-            .attr('height', recordHeight)
-            .append('title').text(d => d.employee.name.first + ' ' + d.employee.name.last)
-          s.append('text')
-            .attr('y', recordHeight / 2)
-            .classed('name', true)
-            .text(d => d.employee.name.first + ' ' + d.employee.name.last)
-          s.append('text')
-            .attr('y', recordHeight / 2)
-            .classed('time start', true)
-            .text(d => formatTime(d.shift.state === ShiftState.Upcoming ? d.shift.typical.start : d.shift.actual.start));
-          s.append('text')
-            .attr('y', recordHeight / 2)
-            .classed('time end', true)
-            .text(d => formatTime(d.shift.state === ShiftState.Complete ? d.shift.actual.end : d.shift.typical.end));
-          return s;
-        }),
-      update => update,
-      exit => exit.remove(),
-    )
-    .each(fn);
+
+  function redraw(data: {
+    shift: {
+      state: ShiftState,
+      actual: {start: Date, end: Date|null},
+      typical: {start: Date, end: Date},
+    },
+    employee: {
+      name: {first: string, last: string}
+    },
+  }[]) {
+    svg.select('g.records')
+      .selectAll('.record')
+      .data(data, (d: any) => d.id)
+      .join(
+        enter => enter.append('g')
+          .classed('record', true)
+          .call(s => {
+            s.append('rect')
+              .classed('fg', true)
+              .attr('height', recordHeight)
+              .append('title').text(d => d.employee.name.first + ' ' + d.employee.name.last)
+            s.append('text')
+              .attr('y', recordHeight / 2)
+              .classed('name', true)
+              .text(d => d.employee.name.first + ' ' + d.employee.name.last)
+            s.append('text')
+              .attr('y', recordHeight / 2)
+              .classed('time start', true)
+              .text(d => formatTime(d.shift.state === ShiftState.Upcoming ? d.shift.typical.start : d.shift.actual.start));
+            s.append('text')
+              .attr('y', recordHeight / 2)
+              .classed('time end', true)
+              .text(d => formatTime(d.shift.state === ShiftState.Complete ? d.shift.actual.end : d.shift.typical.end));
+            return s;
+          }),
+        update => update,
+        exit => exit.remove(),
+      )
+      .each(fn);
+
+  }
+
+  let debounce;
+  function zoomed() {
+    timeScale = d3.event.transform.rescaleX(timeScaleCopy);
+    timeAxis = timeAxis.scale(timeScale);
+    const [a, b] = timeAxis.scale().domain().map(d => (d as Date).toISOString());
+
+    svg.select('g.x').call(timeAxis);
+    svg.select('g.records').selectAll('g.record').each(fn);
+
+    (([a, b]) => {
+      clearTimeout(debounce);
+      debounce = setTimeout(async () => {
+        data = await obj.getData([a, b]);
+        redraw(data);
+      }, 500);
+    })(timeAxis.scale().domain().map(d => (d as Date)));
+
+  }
 
   function fn(d, i) {
     const { state, actual, typical } = d.shift;
@@ -73,22 +114,22 @@ function main() {
         const [x, x0] = [timeScale(actual.start), timeScale(now)];
         const x1 = timeScale(typical.end);
         d.pos.x = x;
-        d.pos.y = 2 + i * (recordHeight + 2);
-        d.pos.w = x0 - x;
-        d.pos.w1 = x1 - x;
+        d.pos.y = 2 + d.pos.yi * (recordHeight + 2);
+        d.pos.w = Math.max(x0 - x, 0); // disgusting
+        d.pos.w1 = Math.max(x1 - x, 0);
         break;
       }
       case ShiftState.Complete: {
         const [x, x0] = [timeScale(actual.start), timeScale(actual.end)];
         d.pos.x = x;
-        d.pos.y = 2 + i * (recordHeight + 2);
+        d.pos.y = 2 + d.pos.yi * (recordHeight + 2);
         d.pos.w = x0 - x;
         break;
       }
       case ShiftState.Upcoming: {
         const [x, x0] = [timeScale(typical.start), timeScale(typical.end)];
         d.pos.x = x;
-        d.pos.y = 2 + i * (recordHeight + 2);
+        d.pos.y = 2 + d.pos.yi * (recordHeight + 2);
         d.pos.w = x0 - x;
         break;
       }
@@ -119,14 +160,7 @@ function main() {
       .lower()
   }
 
-  function zoomed() {
-    timeScale = d3.event.transform.rescaleX(timeScaleCopy);
-    timeAxis = timeAxis.scale(timeScale);
-    const [a, b] = timeAxis.scale().domain().map(d => (d as Date).toISOString());
-
-    svg.select('g.x').call(timeAxis);
-    svg.select('g.records').selectAll('g.record').each(fn);
-  }
+  obj.getData(firstDateRange).then(data => redraw(data));
 
   svg.call(zoom);
 
