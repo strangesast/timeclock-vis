@@ -9,22 +9,17 @@ module.exports = {
   entry: {
     index: './src/index.ts',
     simple: './src/simple.ts',
-    vendor: Object.keys(package.dependencies),
+    each: './src/each.ts',
     worker: './src/data.worker.ts',
+    vendor: Object.keys(package.dependencies),
   },
   plugins: [
-    new HtmlWebpackPlugin({
-      title: 'Timeclock',
-      chunks: ['vendor', 'index'],
-      template: 'src/index.html',
-      filename: 'index.html',
-    }),
-    new HtmlWebpackPlugin({
-      title: 'Simple',
-      chunks: ['vendor', 'simple'],
-      template: 'src/simple.html',
-      filename: 'simple.html',
-    }),
+    ...['index', 'simple', 'each'].map(key => new HtmlWebpackPlugin({
+      title: key[0].toUpperCase() + key.slice(1),
+      chunks: ['vendor', key],
+      template: `src/${key}.html`,
+      filename: `${key}.html`,
+    })),
     new WorkerPlugin(),
     new CopyPlugin([
       {from: 'data/*.json'},
@@ -32,10 +27,6 @@ module.exports = {
   ],
   module: {
     rules: [
-      // {
-      //   test: /\.worker\./,
-      //   use: { loader: 'worker-loader' },
-      // },
       {
         test: /\.ts$/,
         use: 'ts-loader',

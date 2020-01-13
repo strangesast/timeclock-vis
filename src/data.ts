@@ -16,8 +16,8 @@ export function getData(date: Date, length = 10) {
   ].map(shiftState => {
     const [first, last] = [faker.name.firstName(), faker.name.lastName()];
     return {
-      id: ++lastRecordId,
-      employee: {name: {first, last}, id: ++lastEmployeeId },
+      id: (++lastRecordId).toString(),
+      employee: {name: {first, last}, id: (++lastEmployeeId).toString() },
       shift: createFakeShift(shiftState, date),
       pos: {x: 0, y: 0, w: 0, x1: 0, w1: 0},
     };

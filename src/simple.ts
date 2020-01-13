@@ -19,7 +19,7 @@ const colors = {
 
 function main() {
   const now = new Date(2020, 0, 3, 12, 0, 0, 0);
-  let data = getData(now);
+  let data;
 
   const svg = d3.select('svg');
 
@@ -30,9 +30,14 @@ function main() {
   const firstDateRange = centerOnDate(now);
 
   const zoom = d3.zoom().on('zoom', zoomed);
+
   let timeScale = d3.scaleTime()
     .range([0, width])
     .domain(firstDateRange);
+
+  let bandScale = d3.scaleBand()
+    .range([0, height])
+    .padding(0.1)
 
   const timeScaleCopy = timeScale.copy();
 
@@ -47,6 +52,7 @@ function main() {
     .attr('transform', `translate(0,${recordHeight})`)
 
   function redraw(data: {
+    id: string,
     shift: {
       state: ShiftState,
       actual: {start: Date, end: Date|null},
@@ -56,6 +62,9 @@ function main() {
       name: {first: string, last: string}
     },
   }[]) {
+
+    bandScale.domain(data.map(d => d.id))
+
     svg.select('g.records')
       .selectAll('.record')
       .data(data, (d: any) => d.id)
@@ -85,10 +94,9 @@ function main() {
         exit => exit.remove(),
       )
       .each(fn);
-
   }
 
-  let debounce;
+  let debounce = false;
   function zoomed() {
     timeScale = d3.event.transform.rescaleX(timeScaleCopy);
     timeAxis = timeAxis.scale(timeScale);
@@ -97,13 +105,16 @@ function main() {
     svg.select('g.x').call(timeAxis);
     svg.select('g.records').selectAll('g.record').each(fn);
 
-    (([a, b]) => {
-      clearTimeout(debounce);
-      debounce = setTimeout(async () => {
-        data = await obj.getData([a, b]);
-        redraw(data);
-      }, 500);
-    })(timeAxis.scale().domain().map(d => (d as Date)));
+    if (!debounce) {
+      (([a, b]) => {
+        debounce = true;
+        setTimeout(async () => {
+          data = await obj.getData([a, b]);
+          debounce = false;
+          redraw(data);
+        }, 500);
+      })(timeAxis.scale().domain().map(d => (d as Date)));
+    }
 
   }
 
