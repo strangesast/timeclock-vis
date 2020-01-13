@@ -22,7 +22,9 @@ module.exports = {
     })),
     new WorkerPlugin(),
     new CopyPlugin([
+      {from: 'icons', to: 'icons'},
       {from: 'data/*.json'},
+      {from: 'manifest.json'},
     ]),
   ],
   module: {
