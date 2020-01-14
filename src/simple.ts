@@ -1,8 +1,7 @@
 import * as d3 from 'd3';
 import * as Comlink from 'comlink';
-import { addHours, formatTime } from './util';
 
-import { getData, ShiftState } from './data';
+import { ShiftState, throttle, debounce, addHours, formatTime } from './util';
 
 const worker = Comlink.wrap(new Worker('./data.worker.ts', { type: 'module' })) as any;
 
@@ -53,14 +52,14 @@ function main() {
     .attr('transform', `translate(0,${recordHeight})`)
 
   function updateViewWidth() {
+    ({width, height} = (svg.node() as any).getBoundingClientRect());
     timeScale.range([0, width]);
     bandScale.range([0, height]);
     svg.select('g.x').call(timeAxis);
-    ({width, height} = (svg.node() as any).getBoundingClientRect());
     redraw(data);
   }
 
-  window.addEventListener('resize', debounce(() => updateViewWidth()));
+  window.onresize = debounce(() => updateViewWidth(), 200);
 
   function redraw(data: {
     id: string,
@@ -104,7 +103,8 @@ function main() {
         update => update,
         exit => exit.remove(),
       )
-      .each(fn);
+      .each(updatePos)
+      .call(updateSel);
   }
 
   const throttledUpdate = throttle(
@@ -116,37 +116,18 @@ function main() {
     timeScale = d3.event.transform.rescaleX(timeScaleCopy);
     timeAxis = timeAxis.scale(timeScale);
 
-    svg.select('g.x').call(timeAxis);
-    svg.select('g.records').selectAll('g.record').each(fn);
+    svg.select('g.x')
+      .call(timeAxis);
 
-    throttledUpdate(timeAxis.scale().domain().map(d => (d as Date)))
+    svg.select('g.records').selectAll('g.record')
+      .each(updatePos)
+      .call(updateSel);
+
+    const domain = timeAxis.scale().domain().map(d => (d as Date));
+    throttledUpdate(domain);
   }
 
-  function throttle(fn, cb, delay = 200) {
-    let call, waiting = false, i = 0;
-    return (...args) => {
-      const j = ++i;
-      clearTimeout(call);
-      call = setTimeout(async () => {
-        let res = await fn(...args);
-        if (j === i) {
-          waiting = false;
-          cb(res);
-        }
-      }, waiting === true ? delay : 0);
-      waiting = true;
-    };
-  }
-
-  function debounce(fn, delay = 1000) {
-    let call;
-    return (...args) => {
-      clearTimeout(call);
-      call = setTimeout(() => fn(...args), delay);
-    };
-  }
-
-  function fn(d, i) {
+  function updatePos(d, i) {
     const { state, actual, typical } = d.shift;
     switch (state) {
       case ShiftState.InProgress: {
@@ -173,7 +154,9 @@ function main() {
         break;
       }
     }
-    const sel = d3.select(this);
+  }
+
+  function updateSel(sel) {
     sel.select('text.name')
       .attr('text-anchor', 'middle')
       .attr('alignment-baseline', 'middle')
@@ -199,7 +182,7 @@ function main() {
       .lower()
   }
 
-  worker.getData(firstDateRange).then(data => redraw(data));
+  worker.getData(firstDateRange).then(newData => redraw(data = newData));
 
   svg.call(zoom);
 }

@@ -1,6 +1,7 @@
-import '../node_modules/typeface-comfortaa/index.css'
 import * as faker from 'faker';
 import * as d3 from 'd3';
+
+const LOCALE = (navigator.languages && navigator.languages.length) ? navigator.languages[0] : navigator.language;
 
 enum TimeBlockType {
     New = 'new',
@@ -72,12 +73,12 @@ function draw() {
   let data = fakeData;
 
   const zoom = d3.zoom()
-    .scaleExtent([1, 3])
+    // .scaleExtent([1, 3])
     .on('zoom', zoomed);
   let timeScale = d3.scaleTime()
     .domain([addHours(now, -2), addHours(now, 2)]);
 
-  const timeAxis = d3.axisTop(timeScale)
+  let timeAxis = d3.axisTop(timeScale)
     .tickFormat(d3.timeFormat('%H:%M'))
     .tickSize(0)
     .tickPadding(10);
@@ -99,7 +100,8 @@ function draw() {
   topBar.append('rect').attr('fill', colors.lightBlue);
 
   // current time
-  topBar.append('g').classed('current-time', true).append('text')
+  topBar.append('g').classed('current-time', true)
+    .append('text')
     .attr('dominant-baseline', 'middle')
     .attr('text-anchor', 'middle');
 
@@ -122,6 +124,15 @@ function draw() {
         data[i].y = i;
       }
       redraw();
+    });
+
+  createButton(bottomBar, 'Reset')
+    .attr('transform', 'translate(450,10)')
+    .on('click', () => {
+      dataG.transition().duration(750).call(
+        zoom.transform,
+        d3.zoomIdentity,
+      );
     });
 
   let interval;
@@ -181,19 +192,20 @@ function draw() {
     }
   }
 
+  const timeScaleCopy = timeScale.copy();
+
   function zoomed() {
     const {transform} = d3.event;
-    timeScale = transform.rescaleX(timeScale);
-    timeAxis.scale(timeScale)
-    redraw();
+    timeScale = transform.rescaleX(timeScaleCopy);
+    timeAxis = timeAxis.scale(timeScale);
+    redraw(false);
   }
 
   function redraw(animate = true) {
     ({width, height} = (svg.node() as SVGElement).getBoundingClientRect());
     innerWidth = width - padding * 2;
 
-    zoom.translateExtent([[0, 0], [width, height]])
-      .extent([[0, 0], [width, height]]);
+    // zoom.translateExtent([[0, 0], [width, height]]).extent([[0, 0], [width, height]]);
 
     topBar.select('rect')
       .attr('width', width)
@@ -214,7 +226,7 @@ function draw() {
       .attr('transform', `translate(${[width/2, topBarHeight/2].toString()})`)
       .select('text')
       .attr('font-size', 30)
-      .text(formatHours(now));
+      .text(formatDateAndHours(timeScale.invert(width / 2)));
 
     let currentTimeTextWidth;
     {
@@ -242,11 +254,11 @@ function draw() {
           d.type = TimeBlockType.Active;
           d.x = timeScale(d.enter);
           d.x = d.x > 0 ? d.x : 0;
-          d.width = width / 2 - d.x;
+          d.width = Math.max(timeScale(now) - d.x, 0);
         } else if (d.enter == null) {
           d.type = TimeBlockType.Upcoming;
           d.x = timeScale(d.typicalEnter);
-          d.width = width - d.x;
+          d.width = Math.max(width - d.x, 0);
         }
       }
       data.sort((a, b) => {
@@ -430,6 +442,14 @@ function formatHours(date: Date) {
     const mm = date.getMinutes();
 
     return `${hh}:${padLeft(mm.toString())}`;
+}
+
+function formatDateAndHours(date: Date): string {
+  const a = date.toLocaleDateString(LOCALE, { weekday: 'short' });
+  const d = date.getDate();
+  const Y = date.getFullYear();
+  const hhmm = formatHours(date);
+  return `${a} ${d}/${Y} ${hhmm}`;
 }
 
 function padLeft(s: string, n = 2, char='0') {

@@ -1,4 +1,5 @@
 import * as faker from 'faker';
+import {ShiftState} from './util';
 
 let lastEmployeeId = 0;
 let lastRecordId = 0;
@@ -22,12 +23,6 @@ export function getData(date: Date, length = 10) {
       pos: {x: 0, y: 0, w: 0, x1: 0, w1: 0},
     };
   });
-}
-
-export enum ShiftState {
-  Complete = 0,
-  InProgress = 1,
-  Upcoming = 2,
 }
 
 function createFakeShift(shiftState: ShiftState, date: Date) {

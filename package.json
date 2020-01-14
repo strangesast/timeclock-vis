@@ -1,9 +1,11 @@
 {
   "name": "timeclock-vis",
   "scripts": {
-    "start": "webpack-dev-server --port 8080 --host=0.0.0.0 --disableHostCheck=true",
-    "build": "webpack --config webpack.config.js",
-    "test": "mocha -r ts-node/register src/**/*.spec.ts"
+    "start": "webpack-dev-server --env=dev",
+    "build": "webpack --env=prod",
+    "build:dev": "webpack --config webpack.config.dev.js",
+    "test": "mocha -r ts-node/register src/**/*.spec.ts",
+    "webpack-bundle-analyzer": "webpack-bundle-analyzer ./dist/stats.json"
   },
   "author": "Sam Zagrobelny <strangesast@gmail.com>",
   "license": "ISC",
@@ -23,14 +25,15 @@
     "typescript": "^3.7.2",
     "url-loader": "^3.0.0",
     "webpack": "^4.41.2",
+    "webpack-bundle-analyzer": "^3.6.0",
     "webpack-cli": "^3.3.10",
     "webpack-dev-server": "^3.9.0",
+    "webpack-merge": "^4.2.2",
     "webpack-worker": "0.0.20",
     "worker-plugin": "^3.2.0"
   },
   "dependencies": {
     "comlink": "^4.2.0",
-    "d3": "^5.14.2",
-    "typeface-comfortaa": "0.0.76"
+    "d3": "^5.14.2"
   }
 }

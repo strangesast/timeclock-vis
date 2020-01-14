@@ -1,6 +1,5 @@
 import * as Comlink from 'comlink';
-import { ShiftState } from './data';
-import { formatTime, addHours } from './util';
+import { ShiftState, formatTime, addHours } from './util';
 
 async function get(key) {
   const res = await fetch(`data/${key}.json`);
@@ -81,4 +80,4 @@ function sortBy(arr) {
 
 // self.addEventListener('message', (e) => console.log(e));
 
-Comlink.expose(obj);
+Comlink.expose(obj, self as any);
