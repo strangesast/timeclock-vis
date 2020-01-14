@@ -1,11 +1,10 @@
 import * as d3 from 'd3';
-import { getData, ShiftState } from './data';
 import * as Comlink from 'comlink';
+import { addHours, formatTime } from './util';
 
-const worker = new Worker('./data.worker.ts', { type: 'module' });
-const obj = Comlink.wrap(worker) as any;
+import { getData, ShiftState } from './data';
 
-// worker.postMessage('toast');
+const worker = Comlink.wrap(new Worker('./data.worker.ts', { type: 'module' })) as any;
 
 document.addEventListener('DOMContentLoaded', async () => {
   main();
@@ -18,18 +17,20 @@ const colors = {
 };
 
 function main() {
-  const now = new Date(2020, 0, 3, 12, 0, 0, 0);
   let data;
+  let width, height;
 
   const svg = d3.select('svg');
 
-  const {width, height} = (svg.node() as any).getBoundingClientRect();
+  ({width, height} = (svg.node() as any).getBoundingClientRect());
 
   const recordHeight = 40;
 
+  const now = new Date(2020, 0, 3, 12, 0, 0, 0);
   const firstDateRange = centerOnDate(now);
 
-  const zoom = d3.zoom().on('zoom', zoomed);
+  const zoom = d3.zoom()
+    .on('zoom', zoomed);
 
   let timeScale = d3.scaleTime()
     .range([0, width])
@@ -51,6 +52,16 @@ function main() {
     .classed('records', true)
     .attr('transform', `translate(0,${recordHeight})`)
 
+  function updateViewWidth() {
+    timeScale.range([0, width]);
+    bandScale.range([0, height]);
+    svg.select('g.x').call(timeAxis);
+    ({width, height} = (svg.node() as any).getBoundingClientRect());
+    redraw(data);
+  }
+
+  window.addEventListener('resize', debounce(() => updateViewWidth()));
+
   function redraw(data: {
     id: string,
     shift: {
@@ -58,11 +69,11 @@ function main() {
       actual: {start: Date, end: Date|null},
       typical: {start: Date, end: Date},
     },
+    display: {left: string, right: string, center: string},
     employee: {
       name: {first: string, last: string}
     },
   }[]) {
-
     bandScale.domain(data.map(d => d.id))
 
     svg.select('g.records')
@@ -75,20 +86,20 @@ function main() {
             s.append('rect')
               .classed('fg', true)
               .attr('height', recordHeight)
-              .append('title').text(d => d.employee.name.first + ' ' + d.employee.name.last)
+              .append('title')
+              .text(d => d.display.center)
             s.append('text')
               .attr('y', recordHeight / 2)
               .classed('name', true)
-              .text(d => d.employee.name.first + ' ' + d.employee.name.last)
+              .text(d => d.display.center)
             s.append('text')
               .attr('y', recordHeight / 2)
               .classed('time start', true)
-              .text(d => formatTime(d.shift.state === ShiftState.Upcoming ? d.shift.typical.start : d.shift.actual.start));
+              .text(d => d.display.left);
             s.append('text')
               .attr('y', recordHeight / 2)
               .classed('time end', true)
-              .text(d => formatTime(d.shift.state === ShiftState.Complete ? d.shift.actual.end : d.shift.typical.end));
-            return s;
+              .text(d => d.display.right);
           }),
         update => update,
         exit => exit.remove(),
@@ -96,26 +107,43 @@ function main() {
       .each(fn);
   }
 
-  let debounce = false;
+  const throttledUpdate = throttle(
+    async ([fromDate, toDate]) => worker.getData([fromDate, toDate]),
+    newData => redraw(data = newData),
+  );
+
   function zoomed() {
     timeScale = d3.event.transform.rescaleX(timeScaleCopy);
     timeAxis = timeAxis.scale(timeScale);
-    const [a, b] = timeAxis.scale().domain().map(d => (d as Date).toISOString());
 
     svg.select('g.x').call(timeAxis);
     svg.select('g.records').selectAll('g.record').each(fn);
 
-    if (!debounce) {
-      (([a, b]) => {
-        debounce = true;
-        setTimeout(async () => {
-          data = await obj.getData([a, b]);
-          debounce = false;
-          redraw(data);
-        }, 500);
-      })(timeAxis.scale().domain().map(d => (d as Date)));
-    }
+    throttledUpdate(timeAxis.scale().domain().map(d => (d as Date)))
+  }
 
+  function throttle(fn, cb, delay = 200) {
+    let call, waiting = false, i = 0;
+    return (...args) => {
+      const j = ++i;
+      clearTimeout(call);
+      call = setTimeout(async () => {
+        let res = await fn(...args);
+        if (j === i) {
+          waiting = false;
+          cb(res);
+        }
+      }, waiting === true ? delay : 0);
+      waiting = true;
+    };
+  }
+
+  function debounce(fn, delay = 1000) {
+    let call;
+    return (...args) => {
+      clearTimeout(call);
+      call = setTimeout(() => fn(...args), delay);
+    };
   }
 
   function fn(d, i) {
@@ -171,43 +199,12 @@ function main() {
       .lower()
   }
 
-  obj.getData(firstDateRange).then(data => redraw(data));
+  worker.getData(firstDateRange).then(data => redraw(data));
 
   svg.call(zoom);
-
-  // const s = g.selectAll('.record').data(data, (d: any) => d.id)
-  //   .join(
-  //     enter => enter.append('g'),
-  //     update => update.call(sel => sel.select('g.fg')),
-  //     exit => exit.remove(),
-  //   );
-
-
-  // complete
-  // upcoming
-  // inprogress
-
-  // handle scale changes (linear, log)
-
-  // handle zooming
-
-  // handle more / different data
-  //    different zoom region
-  //    time passing
-}
-
-function formatTime(d: Date): string {
-  return `${d.getHours() || 12}:${('0' + d.getMinutes()).slice(-2)}`;
 }
 
 
 function centerOnDate(date: Date, hoursWidth = 8): [Date, Date] {
   return [addHours(date, -hoursWidth / 2), addHours(date, hoursWidth / 2)];
 }
-
-function addHours(date: Date, hours: number): Date {
-  const d = new Date(date);
-  d.setHours(d.getHours() + hours);
-  return d;
-}
-

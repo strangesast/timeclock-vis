@@ -1,5 +1,6 @@
 import * as Comlink from 'comlink';
 import { ShiftState } from './data';
+import { formatTime, addHours } from './util';
 
 async function get(key) {
   const res = await fetch(`data/${key}.json`);
@@ -49,6 +50,11 @@ const obj = {
           employee,
           shift: {state, actual: {start, end}, typical: {start: null, end: typicalEnd}},
           pos: {x: 0, y: 0, w: 0, x1: 0, w1: 0, yi: 0},
+          display: {
+            center: employee.name.first + ' ' + employee.name.last,
+            left: formatTime(start),
+            right: formatTime(state === ShiftState.Complete ? end : typicalEnd),
+          },
         };
       });
     let yi = -1, lastEmployeeId;
