@@ -1,13 +1,22 @@
-import pathlib
 import json
+import asyncio
+import pathlib
+import weakref
 import configparser
 import xmlrpc.client
-import asyncio
-import weakref
+from pprint import pprint
 from aiohttp import web, WSCloseCode
 from datetime import datetime, date, timedelta
-from pprint import pprint
 
+
+# how often is timeclock polled by PC (set on PC)
+POLL_INTERVAL = timedelta(minutes=15)
+
+# how long does the polling take to make it into system
+POLL_PADDING = timedelta(minutes=3)
+
+# how often should refresh be attempted if past POLL_INTERVAL
+POLL_RETRY_INTERVAL = timedelta(minutes=5)
 
 routes = web.RouteTableDef()
 
@@ -44,7 +53,7 @@ def default(o):
         return o.isoformat()
 
 
-def get_last_poll_time(proxy: xmlrpc.client, device_name='Handpunch'):
+def get_last_poll_time(proxy: xmlrpc.client, device_name='Handpunch'): datetime:
     devices = proxy.GetDevices([])
     device = next(device for device in devices if device_name in device.get('Name', ''))
     return device['LastPollTime']
@@ -101,12 +110,22 @@ def get_shifts(proxy, end_date = datetime.now() + timedelta(days=1), start_date 
 
 async def check_timeclock(app):
     try:
-        i = 0
+        last = None
+
         while True:
-            i += 1
-            await asyncio.sleep(1)
-            for ws in app['websockets']:
-                await ws.send_str(f'{i=}')
+            n = get_last_poll_time(proxy)
+            if last is None or last != n:
+                shifts, employees = get_shifts()
+                s = json.dumps({'shifts': shifts, 'employees': employees})
+                for ws in app['websockets']:
+                    await ws.send_str(s)
+                last = n
+            diff = last + POLL_INTERVAL + POLL_PADDING - now
+            if diff < 0:
+                diff = POLL_RETRY_INTERVAL
+
+            await asyncio.sleep(diff.seconds())
+
     except asyncio.CancelledError:
         pass
     finally:
@@ -144,15 +163,6 @@ async def main():
 
     await runner.cleanup()
 
-
-# how often is timeclock polled by PC (set on PC)
-POLL_INTERVAL = timedelta(minutes=15)
-
-# how long does the polling take to make it into system
-POLL_PADDING = timedelta(minutes=3)
-
-# how often should refresh be attempted if past POLL_INTERVAL
-POLL_RETRY_INTERVAL = timedelta(minutes=5)
 
 if __name__ == '__main__':
     config = configparser.ConfigParser()
