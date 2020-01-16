@@ -1,8 +1,8 @@
 {
   "name": "timeclock-vis",
   "scripts": {
-    "start": "webpack-dev-server --env=dev",
-    "build": "webpack --env=prod",
+    "start": "webpack-dev-server --config webpack.config.dev.js",
+    "build": "webpack --config webpack.config.prod.js",
     "build:dev": "webpack --config webpack.config.dev.js",
     "test": "mocha -r ts-node/register src/**/*.spec.ts",
     "webpack-bundle-analyzer": "webpack-bundle-analyzer ./dist/stats.json"
