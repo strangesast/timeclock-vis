@@ -14,6 +14,7 @@
   </style>
 </head>
 <body>
+  <pre></pre>
   <script type="module">
     import {html, render} from './node_modules/lit-html/lit-html.js';
     const template = (name) => html`<p>Hello ${name}</p>`;
@@ -21,15 +22,19 @@
 
     const socket = new WebSocket(`ws://${window.location.host}/socket`);
 
+    const pre = document.querySelector('pre');
+
     socket.onmessage = (e) => {
       const data = JSON.parse(e.data);
 
-      for (const shift of data.shifts) {
-        shift['StartDate'] = new Date(shift['StartDate']);
-        shift['EndDate'] = shift['EndDate'] ? new Date(shift['EndDate']) : null;
+      if (data.shifts) {
+        for (const shift of data.shifts) {
+          shift['StartDate'] = new Date(shift['StartDate']);
+          shift['EndDate'] = shift['EndDate'] ? new Date(shift['EndDate']) : null;
+        }
       }
-
       console.log(data);
+      pre.textContent = JSON.stringify(data, null, 2);
     }
   </script>
 </body>

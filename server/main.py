@@ -37,7 +37,7 @@ async def websocket_handler(request):
 
     request.app['websockets'].add(ws)
 
-    s = json.dumps(request.app['last'], default=default)
+    s = json.dumps(request.app['last-state'], default=default)
     await ws.send_str(s)
 
     try:
@@ -112,33 +112,40 @@ def get_shifts(proxy, end_date = datetime.now() + timedelta(days=1), start_date 
                     'EndDate': end
                     }
             shifts.append(shift)
-    return shifts, included_employees
+    return shifts, employees, included_employees
 
 
 async def check_timeclock(app):
     try:
         proxy = PROXY.get()
-        last = None
+        state = app['last-state']
+        new_state = {}
 
         while True:
-            n = get_last_poll_time(proxy)
-            if last is None or last != n:
-                shifts, employees = get_shifts(proxy)
-                obj = {'shifts': shifts, 'employees': employees}
-                app['last'] = obj
-                s = json.dumps(obj, default=default)
-                for ws in app['websockets']:
-                    await ws.send_str(s)
-                last = n
+            next_poll_time = get_last_poll_time(proxy)
+            # on first loop and when last_poll_time changes
+            if last_poll_time is None or last_poll_time != next_poll_time:
+                shifts, employees, employee_ids = get_shifts(proxy)
+                new_state = {'shifts': shifts, 'employees': employees, 'employeeIds': employee_ids}
+                last_poll_time = next_poll_time
+
             now = datetime.now()
-            diff = last + POLL_INTERVAL + POLL_PADDING - now
+            diff = last_poll_time + POLL_INTERVAL + POLL_PADDING - now
+            # if last poll + interval (+ padding) has already passed, retry later
             if diff < timedelta(0):
                 diff = POLL_RETRY_INTERVAL
-
+            new_state['lastPoll'] = last_poll_time
+            new_state['nextPoll'] = last_poll_time + POLL_INTERVAL
+            new_state['nextRetry'] = now + diff;
+            state = {**state, **new_state}
+            app['last-state'] = state
+            for ws in app['websockets']:
+                await ws.send_str(json.dumps(state, default=default))
             await asyncio.sleep(diff.total_seconds())
 
     except asyncio.CancelledError:
         pass
+
     finally:
         pass
 
@@ -180,25 +187,11 @@ if __name__ == '__main__':
     config = configparser.ConfigParser()
     config.read('config.ini')
 
-    amg_config = config['AMG']
-
-    proxy = get_rpc_connection(
-        amg_config.get('HOST'),
-        amg_config.get('PORT'),
-        amg_config.get('PASSWORD'),
-        amg_config.get('USERNAME'),
-    )
-    PROXY.set(proxy)
-
-    # get state
-    # timeout for time
-    #  if last poll time within interval
-    #t = get_last_poll_time(proxy)
-    #print(t)
-
-    #shifts, included_employees = get_shifts(proxy)
-
-    #with open('shifts.json', 'w') as f:
-    #    json.dump(shifts, f, indent=2, default=default)
+    PROXY.set(get_rpc_connection(
+        config['AMG'].get('HOST'),
+        config['AMG'].get('PORT'),
+        config['AMG'].get('PASSWORD'),
+        config['AMG'].get('USERNAME'),
+    ))
 
     asyncio.run(main())
