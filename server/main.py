@@ -1,20 +1,52 @@
+import pathlib
 import json
 import configparser
 import xmlrpc.client
+import asyncio
+import weakref
+from aiohttp import web, WSCloseCode
 from datetime import datetime, date, timedelta
 from pprint import pprint
+
+
+routes = web.RouteTableDef()
+
+
+@routes.get('/')
+async def index(request):
+    return web.FileResponse('./index.html')
+
+
+@routes.get('/socket')
+async def websocket_handler(request):
+
+    ws = web.WebSocketResponse()
+    await ws.prepare(request)
+
+    request.app['websockets'].add(ws)
+    try:
+        async for msg in ws:
+            print(msg)
+    finally:
+        request.app['websockets'].discard(ws)
+
+    print('websocket connection closed')
+    return ws
+
 
 def get_rpc_connection(host='localhost', port=3003, password='password', username='admin'):
     uri = f'http://{username}:{password}@{host}:{port}/API/Timecard.ashx'
     return xmlrpc.client.ServerProxy(uri, use_datetime=True)
 
+
 def default(o):
     if isinstance(o, datetime):
         return o.isoformat()
 
-def get_last_poll_time(proxy: xmlrpc.client):
+
+def get_last_poll_time(proxy: xmlrpc.client, device_name='Handpunch'):
     devices = proxy.GetDevices([])
-    device = next(device for device in devices if 'Handpunch' in device.get('Name', ''))
+    device = next(device for device in devices if device_name in device.get('Name', ''))
     return device['LastPollTime']
 
 
@@ -67,6 +99,52 @@ def get_shifts(proxy, end_date = datetime.now() + timedelta(days=1), start_date 
     return shifts, included_employees
 
 
+async def check_timeclock(app):
+    try:
+        i = 0
+        while True:
+            i += 1
+            await asyncio.sleep(1)
+            for ws in app['websockets']:
+                await ws.send_str(f'{i=}')
+    except asyncio.CancelledError:
+        pass
+    finally:
+        pass
+
+
+async def start_background_tasks(app):
+    app['timeclock_listener'] = asyncio.create_task(check_timeclock(app))
+
+
+async def cleanup_background_tasks(app):
+    app['timeclock_listener'].cancel()
+    await app['timeclock_listener']
+
+
+async def on_shutdown(app):
+    for ws in set(app['websockets']):
+        await ws.close(code=WSCloseCode.GOING_AWAY,
+                       message='Server shutdown')
+
+async def main():
+    app = web.Application()
+    app['websockets'] = weakref.WeakSet()
+    app.add_routes(routes)
+    app.add_routes([web.static('/node_modules/', '../node_modules/')])
+    app.on_startup.append(start_background_tasks)
+    app.on_cleanup.append(cleanup_background_tasks)
+    app.on_shutdown.append(on_shutdown)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', 8080)
+    await site.start()
+
+    await asyncio.sleep(10000)
+
+    await runner.cleanup()
+
+
 # how often is timeclock polled by PC (set on PC)
 POLL_INTERVAL = timedelta(minutes=15)
 
@@ -92,10 +170,12 @@ if __name__ == '__main__':
     # get state
     # timeout for time
     #  if last poll time within interval
-    t = get_last_poll_time(proxy)
-    print(t)
+    #t = get_last_poll_time(proxy)
+    #print(t)
 
-    shifts, included_employees = get_shifts(proxy)
+    #shifts, included_employees = get_shifts(proxy)
 
-    with open('shifts.json', 'w') as f:
-        json.dump(shifts, f, indent=2, default=default)
+    #with open('shifts.json', 'w') as f:
+    #    json.dump(shifts, f, indent=2, default=default)
+
+    asyncio.run(main())
