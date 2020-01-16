@@ -9,6 +9,8 @@ from pprint import pprint
 from aiohttp import web, WSCloseCode
 from datetime import datetime, date, timedelta
 
+from util import get_rpc_connection, parse_timecards
+
 
 # how often is timeclock polled by PC (set on PC)
 POLL_INTERVAL = timedelta(minutes=15)
@@ -50,11 +52,6 @@ async def websocket_handler(request):
     return ws
 
 
-def get_rpc_connection(host='localhost', port=3003, password='password', username='admin'):
-    uri = f'http://{username}:{password}@{host}:{port}/API/Timecard.ashx'
-    return xmlrpc.client.ServerProxy(uri, use_datetime=True)
-
-
 def default(o):
     if isinstance(o, datetime):
         return o.isoformat()
@@ -66,27 +63,6 @@ def get_last_poll_time(proxy: xmlrpc.client, device_name='Handpunch') -> datetim
     return device['LastPollTime']
 
 
-def merge_dups(arr):
-    ''' arr is pairs of clock in, clock out
-        combine sequential pairs with same clock out, clock in
-    '''
-    # if empty, return empty
-    if not arr: return
-    # start off with first pair
-    aa, ab = arr[0]
-    for ba, bb in arr[1:]:
-        # if pair A end is pair B start
-        if ba == ab:
-            # set pair A end to pair B end
-            ab = bb
-        else:
-            # else pair A is unique so move on
-            yield (aa, ab)
-            # set pair B as pair A
-            aa, ab = ba, bb
-    yield (aa, ab)
-
-
 def get_shifts(proxy, end_date = datetime.now() + timedelta(days=1), start_date = datetime.now() - timedelta(days=2)):
     employees_list = proxy.GetAllEmployeesShort()
     employee_ids = [empl['Id'] for empl in employees_list]
@@ -96,22 +72,11 @@ def get_shifts(proxy, end_date = datetime.now() + timedelta(days=1), start_date 
     shifts = []
     included_employees = {}
     for each in employee_timecards:
-        employee_id = each['EmployeeId']
-        timecards = each['Timecards']
-        timecards = [[punch['OriginalDate'] if (punch := timecard.get(key)) else None for key in ('StartPunch', 'StopPunch')]
-                for timecard in timecards]
-        timecards = list(merge_dups(timecards))
-        if len(timecards):
+        employee_shifts = parse_timecards(each['EmployeeId'], each['Timecards'])
+        if len(employee_shifts):
             employee = employees[employee_id]
             included_employees[employee_id] = employee
-        for start, end in timecards:
-            shift = {
-                    'EmployeeId': employee_id,
-                    'Id': f'{employee_id}_{start.timestamp():.0f}',
-                    'StartDate': start,
-                    'EndDate': end
-                    }
-            shifts.append(shift)
+        shifts.extend(employee_shifts)
     return shifts, employees, included_employees
 
 
