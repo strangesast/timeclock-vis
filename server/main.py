@@ -4,6 +4,7 @@ import pathlib
 import weakref
 import configparser
 import xmlrpc.client
+from contextvars import ContextVar
 from pprint import pprint
 from aiohttp import web, WSCloseCode
 from datetime import datetime, date, timedelta
@@ -17,6 +18,8 @@ POLL_PADDING = timedelta(minutes=3)
 
 # how often should refresh be attempted if past POLL_INTERVAL
 POLL_RETRY_INTERVAL = timedelta(minutes=5)
+
+PROXY = ContextVar('proxy')
 
 routes = web.RouteTableDef()
 
@@ -33,6 +36,10 @@ async def websocket_handler(request):
     await ws.prepare(request)
 
     request.app['websockets'].add(ws)
+
+    s = json.dumps(request.app['last'], default=default)
+    await ws.send_str(s)
+
     try:
         async for msg in ws:
             print(msg)
@@ -53,7 +60,7 @@ def default(o):
         return o.isoformat()
 
 
-def get_last_poll_time(proxy: xmlrpc.client, device_name='Handpunch'): datetime:
+def get_last_poll_time(proxy: xmlrpc.client, device_name='Handpunch') -> datetime:
     devices = proxy.GetDevices([])
     device = next(device for device in devices if device_name in device.get('Name', ''))
     return device['LastPollTime']
@@ -110,21 +117,25 @@ def get_shifts(proxy, end_date = datetime.now() + timedelta(days=1), start_date 
 
 async def check_timeclock(app):
     try:
+        proxy = PROXY.get()
         last = None
 
         while True:
             n = get_last_poll_time(proxy)
             if last is None or last != n:
-                shifts, employees = get_shifts()
-                s = json.dumps({'shifts': shifts, 'employees': employees})
+                shifts, employees = get_shifts(proxy)
+                obj = {'shifts': shifts, 'employees': employees}
+                app['last'] = obj
+                s = json.dumps(obj, default=default)
                 for ws in app['websockets']:
                     await ws.send_str(s)
                 last = n
+            now = datetime.now()
             diff = last + POLL_INTERVAL + POLL_PADDING - now
-            if diff < 0:
+            if diff < timedelta(0):
                 diff = POLL_RETRY_INTERVAL
 
-            await asyncio.sleep(diff.seconds())
+            await asyncio.sleep(diff.total_seconds())
 
     except asyncio.CancelledError:
         pass
@@ -149,6 +160,7 @@ async def on_shutdown(app):
 async def main():
     app = web.Application()
     app['websockets'] = weakref.WeakSet()
+    app['last'] = None
     app.add_routes(routes)
     app.add_routes([web.static('/node_modules/', '../node_modules/')])
     app.on_startup.append(start_background_tasks)
@@ -176,6 +188,7 @@ if __name__ == '__main__':
         amg_config.get('PASSWORD'),
         amg_config.get('USERNAME'),
     )
+    PROXY.set(proxy)
 
     # get state
     # timeout for time

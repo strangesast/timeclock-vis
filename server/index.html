@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Timeclock</title>
+  <style>
+    html, body {
+      height: 100%;
+    }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    }
+  </style>
+</head>
+<body>
+  <script type="module">
+    import {html, render} from './node_modules/lit-html/lit-html.js';
+    const template = (name) => html`<p>Hello ${name}</p>`;
+    render(template('World'), document.body);
+
+    const socket = new WebSocket(`ws://${window.location.host}/socket`);
+
+    socket.onmessage = (e) => {
+      const data = JSON.parse(e.data);
+
+      for (const shift of data.shifts) {
+        shift['StartDate'] = new Date(shift['StartDate']);
+        shift['EndDate'] = shift['EndDate'] ? new Date(shift['EndDate']) : null;
+      }
+
+      console.log(data);
+    }
+  </script>
+</body>
+</html>
