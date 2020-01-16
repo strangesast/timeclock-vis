@@ -72,7 +72,8 @@ def get_shifts(proxy, end_date = datetime.now() + timedelta(days=1), start_date 
     shifts = []
     included_employees = {}
     for each in employee_timecards:
-        employee_shifts = parse_timecards(each['EmployeeId'], each['Timecards'])
+        employee_id = each['EmployeeId']
+        employee_shifts = parse_timecards(employee_id, each['Timecards'])
         if len(employee_shifts):
             employee = employees[employee_id]
             included_employees[employee_id] = employee
@@ -84,6 +85,7 @@ async def check_timeclock(app):
     try:
         proxy = PROXY.get()
         state = app['last-state']
+        last_poll_time = None
         new_state = {}
 
         while True:
@@ -132,9 +134,9 @@ async def on_shutdown(app):
 async def main():
     app = web.Application()
     app['websockets'] = weakref.WeakSet()
-    app['last'] = None
+    app['last-state'] = {}
     app.add_routes(routes)
-    app.add_routes([web.static('/node_modules/', '../node_modules/')])
+    #app.add_routes([web.static('/node_modules/', '../node_modules/')])
     app.on_startup.append(start_background_tasks)
     app.on_cleanup.append(cleanup_background_tasks)
     app.on_shutdown.append(on_shutdown)

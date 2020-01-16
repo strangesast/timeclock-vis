@@ -16,7 +16,9 @@
 <body>
   <pre></pre>
   <script type="module">
-    import {html, render} from './node_modules/lit-html/lit-html.js';
+    // import {html, render} from './node_modules/lit-html/lit-html.js';
+    import {html, render} from 'https://unpkg.com/lit-html?module';
+
     const template = (name) => html`<p>Hello ${name}</p>`;
     render(template('World'), document.body);
 
