@@ -11,32 +11,96 @@
       margin: 0;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
     }
+    body > header {
+      display: flex;
+      font-size: 24px;
+    }
+    body > header > * {
+      padding: 12px;
+    }
+    body > div.table {
+      display: grid;
+      grid-gap: 10px;
+      grid-template-columns: auto auto auto;
+      padding: 8px 20px;
+    }
   </style>
 </head>
 <body>
-  <pre></pre>
   <script type="module">
-    // import {html, render} from './node_modules/lit-html/lit-html.js';
+    // import {html, repeat, render} from './node_modules/lit-html/lit-html.js';
+    // import {repeat} from 'lit-html/directives/repeat.js';
     import {html, render} from 'https://unpkg.com/lit-html?module';
+    import {repeat} from 'https://unpkg.com/lit-html/directives/repeat.js?module';
 
-    const template = (name) => html`<p>Hello ${name}</p>`;
-    render(template('World'), document.body);
+    const RECENT_THRESHOLD = 3.6e6 // 1 hour
 
     const socket = new WebSocket(`ws://${window.location.host}/socket`);
-
-    const pre = document.querySelector('pre');
 
     socket.onmessage = (e) => {
       const data = JSON.parse(e.data);
 
-      if (data.shifts) {
+      if (data.shifts && data.employees) {
+        data['lastPoll'] = new Date(data['lastPoll']);
+        data['nextPoll'] = new Date(data['nextPoll']);
+        data['nextRetry'] = new Date(data['nextRetry']);
         for (const shift of data.shifts) {
           shift['StartDate'] = new Date(shift['StartDate']);
           shift['EndDate'] = shift['EndDate'] ? new Date(shift['EndDate']) : null;
         }
+
+	console.log(data);
+
+	// break into active (null end)
+	// break into recent (end within 1 hour)
+	const now = new Date();
+	const shifts = data.shifts
+   	  .filter(({EndDate}) => EndDate == null || now - EndDate < RECENT_THRESHOLD)
+	  .sort(sortBy(['StartDate', 'EndDate', 'EmployeeId']))
+	  .map(shift => ({...shift, Employee: data.employees[shift['EmployeeId']]}));
+
+	const employeeName = (empl) => html`${empl['FullName']}`;
+
+	const formatTime = (d) => `${d.getHours()}:${('0' + d.getMinutes()).slice(-2)}`;
+	const shiftTime = (d) => html`
+	  <span>${d != null ? formatTime(d) : 'None'}</span>	`;
+
+	const summary = html`
+	  <div>${formatTime(now)}</div>
+	  <div>Last update: ${formatTime(data.lastPoll)}</div>
+	  <div>Next update: ${formatTime(data.nextPoll}${data.nextPoll < now ? '(LATE)' : ''}</div>
+	`;
+	const header = html`<div>Name</div><div>Clock In</div><div>Clock Out</div>`;
+
+	const rows = (items) => html`
+  	  ${repeat(items, (item) => item['Id'], (item, index) => html`
+  	    <div>${employeeName(item['Employee'])}</div>
+  	    <div>
+	      ${shiftTime(item['StartDate'])}
+	      ${item['StartDate'].getDate() != now.getDate() ? html`<span>(${item['StartDate'].getMonth() + 1}/${item['StartDate'].getDate()})</span>`: ''}
+	    </div>
+  	    <div>${shiftTime(item['EndDate'])}</div>
+  	  `)}
+	  `;
+
+	const template = (shifts) => html`
+	<header>${summary}</header>
+	<div class="table">
+	  ${header}
+	  ${rows(shifts)}
+	</div>`;
+        render(template(shifts), document.body);
       }
-      console.log(data);
-      pre.textContent = JSON.stringify(data, null, 2);
+
+      function sortBy(keys) {
+        return function(a, b) {
+	  for (const key of keys) {
+	    if (a[key] < b[key]) return -1;
+	    if (a[key] > b[key]) return 1;
+	  }
+	  return 0;
+	}
+      }
     }
   </script>
 </body>
