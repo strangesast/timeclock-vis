@@ -1,0 +1,5 @@
+[AMG]
+USERNAME = admin
+PASSWORD = password
+HOST = localhost
+PORT = 3003
