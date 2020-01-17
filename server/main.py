@@ -30,6 +30,10 @@ routes = web.RouteTableDef()
 async def index(request):
     return web.FileResponse('./index.html')
 
+@routes.get('/manifest.json')
+async def index(request):
+    return web.FileResponse('../manifest.json')
+
 
 @routes.get('/socket')
 async def websocket_handler(request):
@@ -137,6 +141,7 @@ async def main():
     app['last-state'] = {}
     app.add_routes(routes)
     #app.add_routes([web.static('/node_modules/', '../node_modules/')])
+    app.add_routes([web.static('/icons/', '../icons')])
     app.on_startup.append(start_background_tasks)
     app.on_cleanup.append(cleanup_background_tasks)
     app.on_shutdown.append(on_shutdown)
@@ -145,7 +150,7 @@ async def main():
     site = web.TCPSite(runner, '0.0.0.0', 8080)
     await site.start()
 
-    await asyncio.sleep(10000)
+    await asyncio.sleep(60 * 60 * 100) # 100 hours = ~ 4 days
 
     await runner.cleanup()
 

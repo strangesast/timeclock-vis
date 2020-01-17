@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <title>Timeclock</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="manifest" href="manifest.json">
   <style>
     html, body {
       height: 100%;
@@ -21,8 +23,11 @@
     body > div.table {
       display: grid;
       grid-gap: 10px;
-      grid-template-columns: auto auto auto;
+      grid-template-columns: auto auto auto auto;
       padding: 8px 20px;
+    }
+    body > div.table > div.total {
+      justify-self: end;
     }
   </style>
 </head>
@@ -37,6 +42,64 @@
 
     const socket = new WebSocket(`ws://${window.location.host}/socket`);
 
+    const employeeName = (empl) => html`${empl['FullName']}`;
+    
+    const formatDuration = (f) => {
+      const hours = Math.floor(f / 3.6e6);
+      f -= hours * 3.6e6;
+      const minutes = Math.floor(f / 6e4);
+      f -= minutes * 6e4;
+      const seconds = Math.floor(f / 1e3);
+      let s;
+      if (hours > 0) {
+        s = hours + ':' + ('0' + minutes).slice(-2);
+      } else {
+        s = minutes;
+      }
+      return s + '.' + ('0' + seconds).slice(-2);
+    };
+
+    const formatTime = (d, ms = false) => {
+      const h = d.getHours();
+      const mm = ('0' + d.getMinutes()).slice(-2);
+      let s = `${h}:${mm}`;
+      if (ms) {
+        s += '.' + ('0' + d.getSeconds()).slice(-2);
+      }
+      return s;
+    };
+
+    const shiftTime = (d) => html`
+      <span>${d ? formatTime(d) : 'None'}</span>	`;
+    
+    const summary = (now, lastPoll, nextPoll) => html`
+      <div>${formatTime(now, true)}</div>
+      <div>As of ${formatTime(lastPoll)}</div>
+      <div>Next update: ${formatTime(nextPoll)}${nextPoll < now ? '(LATE)' : ''}</div>
+    `;
+    const header = html`<div>Name</div><div>Clock In</div><div>Clock Out</div><div>Total</div>`;
+    
+    const rows = (items, now) => html`
+      ${repeat(items, (item) => item['Id'], (item, index) => html`
+        <div>${employeeName(item['Employee'])}</div>
+        <div>
+          ${shiftTime(item['StartDate'])}
+          ${item['StartDate'].getDate() != now.getDate() ? html`<span>(${item['StartDate'].getMonth() + 1}/${item['StartDate'].getDate()})</span>`: ''}
+        </div>
+        <div>${shiftTime(item['EndDate'])}</div>
+        <div class="total">${formatDuration((item['EndDate'] || now) - item['StartDate'])}</div>
+      `)}
+      `;
+    
+    const template = (data, now) => html`
+    <header>${summary(now, data.lastPoll, data.nextPoll)}</header>
+    <div class="table">
+      ${header}
+      ${rows(data.filteredShifts, now)}
+    </div>`;
+
+
+    let timeout;
     socket.onmessage = (e) => {
       const data = JSON.parse(e.data);
 
@@ -48,49 +111,18 @@
           shift['StartDate'] = new Date(shift['StartDate']);
           shift['EndDate'] = shift['EndDate'] ? new Date(shift['EndDate']) : null;
         }
-
-	console.log(data);
-
-	// break into active (null end)
-	// break into recent (end within 1 hour)
+      }
+      clearTimeout(timeout);
+      (function update() {
 	const now = new Date();
-	const shifts = data.shifts
+	data.filteredShifts = data.shifts
    	  .filter(({EndDate}) => EndDate == null || now - EndDate < RECENT_THRESHOLD)
 	  .sort(sortBy(['StartDate', 'EndDate', 'EmployeeId']))
 	  .map(shift => ({...shift, Employee: data.employees[shift['EmployeeId']]}));
 
-	const employeeName = (empl) => html`${empl['FullName']}`;
-
-	const formatTime = (d) => `${d.getHours()}:${('0' + d.getMinutes()).slice(-2)}`;
-	const shiftTime = (d) => html`
-	  <span>${d != null ? formatTime(d) : 'None'}</span>	`;
-
-	const summary = html`
-	  <div>${formatTime(now)}</div>
-	  <div>Last update: ${formatTime(data.lastPoll)}</div>
-	  <div>Next update: ${formatTime(data.nextPoll}${data.nextPoll < now ? '(LATE)' : ''}</div>
-	`;
-	const header = html`<div>Name</div><div>Clock In</div><div>Clock Out</div>`;
-
-	const rows = (items) => html`
-  	  ${repeat(items, (item) => item['Id'], (item, index) => html`
-  	    <div>${employeeName(item['Employee'])}</div>
-  	    <div>
-	      ${shiftTime(item['StartDate'])}
-	      ${item['StartDate'].getDate() != now.getDate() ? html`<span>(${item['StartDate'].getMonth() + 1}/${item['StartDate'].getDate()})</span>`: ''}
-	    </div>
-  	    <div>${shiftTime(item['EndDate'])}</div>
-  	  `)}
-	  `;
-
-	const template = (shifts) => html`
-	<header>${summary}</header>
-	<div class="table">
-	  ${header}
-	  ${rows(shifts)}
-	</div>`;
-        render(template(shifts), document.body);
-      }
+        render(template(data, now), document.body);
+	timeout = setTimeout(update, 1000);
+      })();
 
       function sortBy(keys) {
         return function(a, b) {
