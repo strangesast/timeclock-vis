@@ -4,6 +4,19 @@ export enum ShiftState {
   Upcoming = 2,
 }
 
+export interface Shift {
+  id: string,
+  shift: {
+    state: ShiftState;
+    actual: {start: Date, end: Date|null};
+    typical: {start: Date, end: Date};
+  };
+  display: {left: string, right: string, center: string};
+  employee: {
+    name: {first: string, last: string}
+  };
+}
+
 export function formatTime(d: Date): string {
   return `${d.getHours() || 12}:${('0' + d.getMinutes()).slice(-2)}`;
 }
