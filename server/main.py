@@ -94,6 +94,7 @@ async def check_timeclock(app):
 
         while True:
             next_poll_time = get_last_poll_time(proxy)
+            print(f'{next_poll_time}')
             # on first loop and when last_poll_time changes
             if last_poll_time is None or last_poll_time != next_poll_time:
                 shifts, employees, employee_ids = get_shifts(proxy)
