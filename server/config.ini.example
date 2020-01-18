@@ -3,3 +3,9 @@ USERNAME = admin
 PASSWORD = password
 HOST = localhost
 PORT = 3003
+
+[MYSQL]
+USERNAME = root
+PASSWORD = password
+HOST = localhost
+PORT = 3306
