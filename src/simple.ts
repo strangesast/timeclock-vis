@@ -39,22 +39,37 @@ function main() {
     .range([headerHeight, height])
     .padding(0.1);
 
+  // const dayAxisOffset = (sel) => {
+  //   const d = new Date();
+  //   const offset = (timeScale(d3.timeDay.offset(d, 1)) - timeScale(d)) / 2;
+  //   return sel.selectAll('text').attr('transform', `translate(${offset},0)`);
+  // };
+
   const timeScaleCopy = timeScale.copy();
 
   let timeAxis = d3.axisTop(timeScale);
 
-  svg.append('g').classed('x', true)
+  svg.append('g').classed('x time', true)
     .call(timeAxis)
     .attr('transform', `translate(0,${headerHeight})`);
 
-  svg.append('g')
-    .classed('records', true);
+  // const dayAxis = (sel) => {
+  //   sel.selectAll('text').data();
+  // };
+
+  // svg.append('g').classed('x day', true)
+  //   .call(dayAxis)
+  //   .attr('transform', `translate(0,${headerHeight / 2})`);
+
+  svg.append('g').classed('days', true);
+  svg.append('g').classed('records', true);
 
   function updateViewWidth() {
     ({width, height} = (svg.node() as any).getBoundingClientRect());
     timeScale.range([0, width]);
     // bandScale.range([0, height]);
-    svg.select('g.x').call(timeAxis);
+    svg.select('g.x.time').call(timeAxis);
+    // svg.select('g.x.day').call(dayAxis).call(dayAxisOffset);
     redraw(data);
   }
 
@@ -103,9 +118,13 @@ function main() {
   function zoomed() {
     timeScale = d3.event.transform.rescaleX(timeScaleCopy);
     timeAxis = timeAxis.scale(timeScale);
+    //dayAxis = dayAxis.scale(timeScale);
 
-    svg.select('g.x')
+    svg.select('g.x.time')
       .call(timeAxis);
+
+    // svg.select('g.x.day')
+    //   .call(dayAxis).call(dayAxisOffset);;
 
     svg.select('g.records').selectAll('g.record')
       .each(updatePos)
