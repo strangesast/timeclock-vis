@@ -1,5 +1,5 @@
 import * as Comlink from 'comlink';
-import { ShiftState, formatTime, addHours } from './util';
+import { Shift, ShiftState, formatTime, addHours } from './util';
 
 async function get(key) {
   const res = await fetch(`data/${key}.json`);
@@ -30,6 +30,20 @@ const obj = {
         return acc;
       }, {});
     }),
+  },
+  async getEmployees() {
+    return Object.values(await obj.data.employees);
+  },
+  async getEmployeeShifts(ids: number[], [fromDate, toDate]): Promise<{[id: string]: any[]}> {
+    const shifts = await obj.data.shifts;
+    const subset = ids.reduce((acc, id) => ({...acc, [id]: []}), {});
+    console.log(subset);
+    for (const shift of shifts) {
+      if (ids.includes(shift.employee)) {
+        subset[shift.employee].push(shift);
+      }
+    }
+    return subset;
   },
   async getData([fromDate, toDate]) {
     const shifts = await obj.data.shifts;
