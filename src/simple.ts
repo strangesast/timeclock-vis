@@ -1,19 +1,13 @@
 import * as d3 from 'd3';
 import * as Comlink from 'comlink';
 
-import { Shift, ShiftState, throttle, debounce, addHours, formatTime } from './util';
+import { colors, Shift, ShiftState, throttle, debounce, addHours, formatTime } from './util';
 
 const worker = Comlink.wrap(new Worker('./data.worker.ts', { type: 'module' })) as any;
 
 document.addEventListener('DOMContentLoaded', async () => {
   main();
 });
-
-const colors = {
-    lightBlue: '#cfe2f3',
-    darkBlue: '#6fa8dc',
-    lightGreen: '#93c47d',
-};
 
 function main() {
   let data;
