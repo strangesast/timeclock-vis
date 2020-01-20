@@ -1,3 +1,9 @@
+export const colors = {
+  lightBlue: '#cfe2f3',
+  darkBlue: '#6fa8dc',
+  lightGreen: '#93c47d',
+};
+
 export enum ShiftState {
   Complete = 0,
   InProgress = 1,
