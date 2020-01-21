@@ -8,7 +8,7 @@ services:
   - docker
 
 arch:
-  - arm32
+  - rpi
   - amd64
 
 os:
@@ -18,10 +18,7 @@ env:
   - DOCKER_COMPOSE_VERSION=1.24.1
 
 before_install:
-  - sudo rm /usr/local/bin/docker-compose
-  - curl -L https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-`uname -s`-`uname -m` > docker-compose
-  - chmod +x docker-compose
-  - sudo mv docker-compose /usr/local/bin
+  - sudo python3 -m pip install docker-compose
   - docker-compose --version
 
 before_script:
