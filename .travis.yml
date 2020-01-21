@@ -1,8 +1,8 @@
 sudo: required
 
-language: python
-python:
-  - 3.8
+language: node_js
+node_js:
+  - 13
 
 services:
   - docker
@@ -19,18 +19,25 @@ os:
 
 before_install:
   - docker-compose --version
+  - npm i -g npm
 
 before_script:
   - docker-compose pull
 
 script:
   - docker-compose build
-  - docker images
+  - npm install
+  - npm run-script build
 
 deploy:
-  provider: pages
-  skip_cleanup: true
-  github_token: $GITHUB_TOKEN  # Set in the settings page of your repository, as a secure variable
-  keep_history: true
-  on:
-    branch: master
+  - provider: pages
+    skip_cleanup: true
+    github_token: $GITHUB_TOKEN
+    keep_history: true
+    local_dir: dist
+    on:
+      branch: master
+  - provider: script
+    script: bash docker/push
+    on:
+      branch: master
