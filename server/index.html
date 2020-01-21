@@ -35,15 +35,19 @@
   </style>
 </head>
 <body>
+  <script src="https://unpkg.com/@reactivex/rxjs@6.1/dist/global/rxjs.umd.js"></script>
   <script type="module">
     // import {html, repeat, render} from './node_modules/lit-html/lit-html.js';
     // import {repeat} from 'lit-html/directives/repeat.js';
-    import {html, render} from 'https://unpkg.com/lit-html?module';
-    import {repeat} from 'https://unpkg.com/lit-html/directives/repeat.js?module';
+    import { html, render } from 'https://unpkg.com/lit-html?module';
+    import { repeat } from 'https://unpkg.com/lit-html/directives/repeat.js?module';
+    const { WebSocketSubject } = rxjs.webSocket;
+    const { switchMap, startWith, map } = rxjs.operators;
+    const { empty, interval } = rxjs;
 
-    const RECENT_THRESHOLD = 3.6e6 // 1 hour
+    const RECENT_THRESHOLD = 3.6e6 * 2 // 2 hours
 
-    const socket = new WebSocket(`ws://${window.location.host}/socket`);
+    const socket = new WebSocketSubject(`ws://${window.location.host}/socket`);
 
     const employeeName = (empl) => html`${empl['FullName']}`;
     
@@ -101,45 +105,37 @@
       ${rows(data.filteredShifts, now)}
     </div>`;
 
-
     let timeout;
-    socket.onmessage = (e) => {
-      const data = JSON.parse(e.data);
-      console.log('data', data);
-
-      if (data.shifts && data.employees) {
-        data['lastPoll'] = new Date(data['lastPoll']);
-        data['nextPoll'] = new Date(data['nextPoll']);
-        data['nextRetry'] = new Date(data['nextRetry']);
-        for (const shift of data.shifts) {
-          shift['StartDate'] = new Date(shift['StartDate']);
-          shift['EndDate'] = shift['EndDate'] ? new Date(shift['EndDate']) : null;
-        }
+    socket.pipe(switchMap(data => {
+      if (!data || !data.shifts || !data.employees) {
+        return empty();
       }
-      clearTimeout(timeout);
-      (function update() {
-        if (data.shifts) {
-	  const now = new Date();
-	  data.filteredShifts = data.shifts
-   	    .filter(({EndDate}) => EndDate == null || now - EndDate < RECENT_THRESHOLD)
-	    .sort(sortBy(['StartDate', 'EndDate', 'EmployeeId']))
-	    .map(shift => ({...shift, Employee: data.employees[shift['EmployeeId']]}));
 
-          render(template(data, now), document.body);
-          timeout = setTimeout(update, 1000);
-	} else {
-  	  console.log('no shifts?', data);
-	}
-      })();
+      data['lastPoll'] = new Date(data['lastPoll']);
+      data['nextPoll'] = new Date(data['nextPoll']);
+      data['nextRetry'] = new Date(data['nextRetry']);
+      for (const shift of data.shifts) {
+        shift['StartDate'] = new Date(shift['StartDate']);
+        shift['EndDate'] = shift['EndDate'] ? new Date(shift['EndDate']) : null;
+      }
+      return interval(1000).pipe(startWith(0), map(() => {
+	const now = new Date();
+	data.filteredShifts = data.shifts
+   	  .filter(({EndDate}) => EndDate == null || now - EndDate < RECENT_THRESHOLD)
+	  .sort(sortBy(['StartDate', 'EndDate', 'EmployeeId']))
+	  .map(shift => ({...shift, Employee: data.employees[shift['EmployeeId']]}));
 
-      function sortBy(keys) {
-        return function(a, b) {
-	  for (const key of keys) {
-	    if (a[key] < b[key]) return -1;
-	    if (a[key] > b[key]) return 1;
-	  }
-	  return 0;
-	}
+        render(template(data, now), document.body);
+      }));
+    })).subscribe();
+
+    function sortBy(keys) {
+      return function(a, b) {
+        for (const key of keys) {
+          if (a[key] < b[key]) return -1;
+          if (a[key] > b[key]) return 1;
+        }
+        return 0;
       }
     }
 
@@ -147,11 +143,11 @@
       try {
         wakeLock = await navigator.wakeLock.request('screen');
         wakeLock.addEventListener('release', () => {
-          console.log('Wake Lock was released');
+          console.info('Wake Lock was released');
         });
-        console.log('Wake Lock is active');
+        console.info('Wake Lock is active');
       } catch (err) {
-        console.error(`${err.name}, ${err.message}`);
+        console.info('Wake Lock is inactive');
       }
     })();
   </script>

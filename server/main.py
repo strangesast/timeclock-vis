@@ -27,13 +27,14 @@ PROXY = ContextVar('proxy')
 routes = web.RouteTableDef()
 
 
-@routes.get('/')
-async def index(request):
-    return web.FileResponse('./index.html')
-
-@routes.get('/manifest.json')
-async def index(request):
-    return web.FileResponse('../manifest.json')
+if os.environ.get('env') != 'production': 
+    @routes.get('/')
+    async def index(request):
+        return web.FileResponse('./index.html')
+    
+    @routes.get('/manifest.json')
+    async def index(request):
+        return web.FileResponse('../manifest.json')
 
 
 @routes.get('/socket')
@@ -49,7 +50,7 @@ async def websocket_handler(request):
 
     try:
         async for msg in ws:
-            print(msg)
+            print(f'{msg=}')
     finally:
         request.app['websockets'].discard(ws)
 
@@ -141,22 +142,23 @@ async def main():
     app = web.Application()
     app['websockets'] = weakref.WeakSet()
     app['last-state'] = {}
+
     app.add_routes(routes)
-    #app.add_routes([web.static('/node_modules/', '../node_modules/')])
-    app.add_routes([web.static('/icons/', '../icons')])
+    if os.environ.get('env') != 'production': 
+        app.add_routes([web.static('/icons/', '../icons')])
+
     app.on_startup.append(start_background_tasks)
     app.on_cleanup.append(cleanup_background_tasks)
     app.on_shutdown.append(on_shutdown)
     runner = web.AppRunner(app)
+    host, port = os.environ.get('SERVER_HOST', '0.0.0.0'), os.environ.get('SERVER_PORT', 8080)
     await runner.setup()
-    site = web.TCPSite(
-            runner,
-            os.environ.get('SERVER_HOST', '0.0.0.0'),
-            os.environ.get('SERVER_PORT', 8080))
+    print(f'starting at {host}:{port}')
+    site = web.TCPSite(runner, host, port)
     await site.start()
-
+    print(f'started')
     await asyncio.sleep(60 * 60 * 24) # 1 day
-
+    print(f'shutting down')
     await runner.cleanup()
 
 
@@ -164,11 +166,15 @@ if __name__ == '__main__':
     config = configparser.ConfigParser()
     config.read('config.ini')
 
-    PROXY.set(get_rpc_connection(
+    print('read config');
+
+    proxy = get_rpc_connection(
         config['AMG'].get('HOST'),
         config['AMG'].get('PORT'),
         config['AMG'].get('PASSWORD'),
         config['AMG'].get('USERNAME'),
-    ))
+    )
+    PROXY.set(proxy)
+    print('got xmlrpc connection')
 
     asyncio.run(main())
