@@ -107,6 +107,7 @@
 
     let timeout;
     socket.pipe(switchMap(data => {
+      console.log('data', data);
       if (!data || !data.shifts || !data.employees) {
         return empty();
       }
@@ -118,15 +119,17 @@
         shift['StartDate'] = new Date(shift['StartDate']);
         shift['EndDate'] = shift['EndDate'] ? new Date(shift['EndDate']) : null;
       }
-      return interval(1000).pipe(startWith(0), map(() => {
-	const now = new Date();
-	data.filteredShifts = data.shifts
-   	  .filter(({EndDate}) => EndDate == null || now - EndDate < RECENT_THRESHOLD)
-	  .sort(sortBy(['StartDate', 'EndDate', 'EmployeeId']))
-	  .map(shift => ({...shift, Employee: data.employees[shift['EmployeeId']]}));
-
-        render(template(data, now), document.body);
-      }));
+      return interval(1000).pipe(
+        startWith(0),
+        map(() => {
+          const now = new Date();
+          data.filteredShifts = data.shifts
+            .filter(({EndDate}) => EndDate == null || now - EndDate < RECENT_THRESHOLD)
+            .sort(sortBy(['StartDate', 'EndDate', 'EmployeeId']))
+            .map(shift => ({...shift, Employee: data.employees[shift['EmployeeId']]}));
+          render(template(data, now), document.body);
+        }),
+      );
     })).subscribe();
 
     function sortBy(keys) {
