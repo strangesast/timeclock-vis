@@ -1,3 +1,4 @@
+import os
 import json
 import asyncio
 import pathlib
@@ -13,10 +14,10 @@ from util import get_rpc_connection, parse_timecards
 
 
 # how often is timeclock polled by PC (set on PC)
-POLL_INTERVAL = timedelta(minutes=15)
+POLL_INTERVAL = timedelta(minutes=60)
 
 # how long does the polling take to make it into system
-POLL_PADDING = timedelta(minutes=3)
+POLL_PADDING = timedelta(minutes=1)
 
 # how often should refresh be attempted if past POLL_INTERVAL
 POLL_RETRY_INTERVAL = timedelta(minutes=5)
@@ -148,10 +149,13 @@ async def main():
     app.on_shutdown.append(on_shutdown)
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', 8080)
+    site = web.TCPSite(
+            runner,
+            os.environ.get('SERVER_HOST', '0.0.0.0'),
+            os.environ.get('SERVER_PORT', 8080))
     await site.start()
 
-    await asyncio.sleep(60 * 60 * 100) # 100 hours = ~ 4 days
+    await asyncio.sleep(60 * 60 * 24) # 1 day
 
     await runner.cleanup()
 

@@ -1,0 +1,18 @@
+version: '3.7'
+services:
+  nginx:
+    build:
+      context: .
+      dockerfile: docker/nginx/Dockerfile
+    #volumes:
+    #vo- ./nginx/site.conf:/etc/nginx/conf.d/site.conf
+    expose:
+      - "80"
+  server:
+    build:
+      context: .
+      dockerfile: docker/server/Dockerfile
+    volumes:
+      - ./server/config.ini:/app/config.ini
+    environment:
+      - SERVER_PORT=8080
