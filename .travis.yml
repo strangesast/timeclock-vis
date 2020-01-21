@@ -39,11 +39,13 @@ deploy:
     github_token: $GITHUB_TOKEN
     allow_failure: true
     keep_history: true
+    verbose: true
     local_dir: dist
     edge: true
     on:
       branch: master
   - provider: script
     script: bash ./docker/push.sh
+    verbose: true
     on:
       branch: master
