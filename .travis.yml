@@ -37,13 +37,13 @@ deploy:
   - provider: pages
     skip_cleanup: true
     github_token: $GITHUB_TOKEN
-    allow_failture: true
+    allow_failure: true
     keep_history: true
     local_dir: dist
     edge: true
     on:
       branch: master
   - provider: script
-    script: bash docker/push
+    script: bash ./docker/push.sh
     on:
       branch: master
