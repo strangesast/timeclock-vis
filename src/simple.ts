@@ -1,7 +1,7 @@
 import * as d3 from 'd3';
 import * as Comlink from 'comlink';
 
-import { colors, Shift, ShiftState, throttle, debounce, addHours, formatTime } from './util';
+import { colors, Employee, Shift, ShiftState, throttle, debounce, addHours, formatTime } from './util';
 
 const worker = Comlink.wrap(new Worker('./data.worker.ts', { type: 'module' })) as any;
 
@@ -30,8 +30,7 @@ function main() {
     .domain(firstDateRange);
 
   let bandScale = d3.scaleBand()
-    .range([headerHeight, height])
-    .padding(0.1);
+    .range([headerHeight, height]);
 
   const timeScaleCopy = timeScale.copy();
 
@@ -52,12 +51,19 @@ function main() {
 
   window.onresize = debounce(() => updateViewWidth(), 200);
 
-  function redraw({shifts, employeeIds}: {shifts: Shift[], employeeIds: string[]}) {
+  function redraw({shifts, employeeIds, employees}: {employees: {[id: string]: Employee}, shifts: Shift[], employeeIds: string[]}) {
     bandScale.domain(employeeIds).padding(0.1)
 
     shifts.forEach(updatePos);
 
     const t = d3.transition();
+
+    svg.select('g.rows').selectAll('.row').data(employeeIds, (d: any) => d.id)
+      .join(
+        enter => enter,
+        update => update,
+        exit => exit.remove(),
+      )
 
     svg.select('g.records')
       .selectAll('.record')
@@ -69,7 +75,6 @@ function main() {
             .call(s => {
               s.append('rect')
                 .classed('fg', true)
-                .attr('height', bandScale.bandwidth())
                 .append('title')
                 .text(d => d.display.center)
               const g = s.append('g').classed('text', true);
@@ -131,7 +136,7 @@ function main() {
       }
     }
     d.pos.x = x;
-    d.pos.y = bandScale(d.employee.id);
+    d.pos.y = bandScale(d.employee.id) || 0;
     d.pos.w = w;
     d.pos.w1 = w1;
   }
@@ -151,7 +156,6 @@ function main() {
     sel.select('text.time.left')
       .attr('text-anchor', 'start')
       .attr('transform', (d: any) => `translate(${d.pos.x},${dy})`);
-
 
     sel.select('text.time.right')
       .attr('text-anchor', 'end')

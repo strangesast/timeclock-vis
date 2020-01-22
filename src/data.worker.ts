@@ -37,7 +37,6 @@ const obj = {
   async getEmployeeShifts(ids: number[], [fromDate, toDate]): Promise<{[id: string]: any[]}> {
     const shifts = await obj.data.shifts;
     const subset = ids.reduce((acc, id) => ({...acc, [id]: []}), {});
-    console.log(subset);
     for (const shift of shifts) {
       if (ids.includes(shift.employee)) {
         subset[shift.employee].push(shift);
@@ -46,23 +45,29 @@ const obj = {
     return subset;
   },
   async getData([fromDate, toDate]) {
-    const shifts = await obj.data.shifts;
-    const employees = await obj.data.employees;
-    const subset = [];
-    const employeeIds = new Set();
-    for (const shift of shifts) {
+    const allShifts = await obj.data.shifts;
+    const allEmployees = await obj.data.employees;
+    const shifts = [];
+    const employees = {};
+    const employeeIds = []
+    for (const shift of allShifts) {
       if (inFieldOfView([shift.start, shift.end], [fromDate, toDate])) {
-        const employee = employees[shift.employee];
-        employeeIds.add(shift.employee);
+        const employeeId = shift.employee;
+        const employee = allEmployees[employeeId];
+        if (!employeeIds.includes(shift.employee)) {
+          employeeIds.push(employeeId);
+          employees[employeeId] = employee;
+        }
         let state, typicalEnd = null;
         if (shift.end != null) {
           state = ShiftState.Complete;
         } else {
+          // made up bs
           typicalEnd = new Date(shift.start);
           typicalEnd.setHours(typicalEnd.getHours() + 8);
           state = ShiftState.InProgress;
         }
-        subset.push({
+        shifts.push({
           id: shift.id,
           employee,
           shift: {state, actual: {start: shift.start, end: shift.end}, typical: {start: null, end: typicalEnd}},
@@ -75,7 +80,7 @@ const obj = {
         });
       }
     }
-    return {employeeIds: Array.from(employeeIds), shifts: subset};
+    return {employeeIds, employees, shifts};
   }
 };
 

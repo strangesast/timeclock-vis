@@ -10,6 +10,14 @@ export enum ShiftState {
   Upcoming = 2,
 }
 
+export interface Employee {
+  id: number;
+  name: {
+    first: string;
+    last: string;
+  }
+}
+
 export interface Shift {
   id: string,
   shift: {
