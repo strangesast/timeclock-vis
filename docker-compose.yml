@@ -4,12 +4,14 @@ services:
     build:
       context: .
       dockerfile: docker/nginx/Dockerfile
+    image: strangesast/timeclock-vis_nginx
     ports:
-      - '12345:8080'
+      - '8080:8080'
   server:
     build:
       context: .
       dockerfile: docker/server/Dockerfile
+    image: strangesast/timeclock-vis_server
     volumes:
       - ./server/config.ini:/app/config.ini
     environment:
