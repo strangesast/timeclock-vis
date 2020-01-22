@@ -19,7 +19,9 @@ module.exports = {
       template: `src/${key}.html`,
       filename: `${key}.html`,
     })),
-    new WorkerPlugin(),
+    new WorkerPlugin({
+      globalObject: 'self',
+    }),
     new CopyPlugin([
       {from: 'icons', to: 'icons'},
       {from: 'data/*.json'},
@@ -40,7 +42,4 @@ module.exports = {
   resolve: {
     extensions: ['.ts', '.js']
   },
-  output: {
-    filename: '[name].bundle.js',
-  }
 };

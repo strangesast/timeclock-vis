@@ -22,10 +22,10 @@ cache:
     - ./node_modules
 
 before_install:
-  - docker-compose --version
   - npm i -g npm
 
 before_script:
+  - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
   - docker-compose pull
 
 script:
@@ -38,7 +38,7 @@ deploy:
     skip_cleanup: true
     github_token: $GITHUB_TOKEN
     allow_failure: true
-    #keep_history: true
+    keep_history: true
     verbose: true
     local_dir: dist
     edge: true
