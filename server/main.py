@@ -22,7 +22,7 @@ POLL_INTERVAL = timedelta(minutes=60)
 POLL_PADDING = timedelta(minutes=1)
 
 # how often should refresh be attempted if past POLL_INTERVAL
-POLL_RETRY_INTERVAL = timedelta(minutes=5)
+POLL_RETRY_INTERVAL = timedelta(minutes=1)
 
 last_state = {}
 
@@ -156,7 +156,7 @@ async def main(config):
 
     print('got xmlrpc connection')
 
-    app['proxy'] = get_rpc_connection(
+    app['proxy'] = get_async_rpc_connection(
         os.environ.get('AMG_HOST') or config['AMG'].get('HOST'),
         os.environ.get('AMG_PORT') or config['AMG'].get('PORT'),
         os.environ.get('AMG_PASSWORD') or config['AMG'].get('PASSWORD'),
