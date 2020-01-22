@@ -29,8 +29,11 @@ function main() {
     .range([0, width])
     .domain(firstDateRange);
 
-  let bandScale = d3.scaleBand()
-    .range([headerHeight, height]);
+  let yScale = d3.scaleOrdinal();
+  let yOffset = 0;
+
+  // let bandScale = d3.scaleBand()
+  //   .range([headerHeight, height]);
 
   const timeScaleCopy = timeScale.copy();
 
@@ -51,8 +54,14 @@ function main() {
 
   window.onresize = debounce(() => updateViewWidth(), 200);
 
+  const rowHeight = 40;
+  const rowPadding = 4;
+  const rowInnerHeight = rowHeight - rowPadding;
+
   function redraw({shifts, employeeIds, employees}: {employees: {[id: string]: Employee}, shifts: Shift[], employeeIds: string[]}) {
-    bandScale.domain(employeeIds).padding(0.1)
+    yScale.domain(employeeIds).range(Array.from(Array(employeeIds.length)).map((_, i) => headerHeight + rowPadding / 2 + i * rowHeight));
+
+    // bandScale.domain(employeeIds).padding(0.1)
 
     shifts.forEach(updatePos);
 
@@ -98,6 +107,7 @@ function main() {
   function zoomed() {
     timeScale = d3.event.transform.rescaleX(timeScaleCopy);
     timeAxis = timeAxis.scale(timeScale);
+    yOffset = d3.event.transform.scale(1/d3.event.transform.k).y;
 
     svg.select('g.x.time')
       .call(timeAxis);
@@ -136,14 +146,17 @@ function main() {
       }
     }
     d.pos.x = x;
-    d.pos.y = bandScale(d.employee.id) || 0;
+    // d.pos.y = bandScale(d.employee.id) || 0;
+    d.pos.y = yOffset + (yScale(d.employee.id) as number) || 0;
     d.pos.w = w;
     d.pos.w1 = w1;
   }
 
   function updateSel(sel) {
-    const dy = bandScale.step() / 2;
-    const h = bandScale.bandwidth();
+    // const dy = bandScale.step() / 2;
+    const dy = rowHeight / 2;
+    // const h = bandScale.bandwidth();
+    const h = rowInnerHeight;
 
     sel.select('text.center')
       .attr('text-anchor', 'middle')
@@ -186,6 +199,29 @@ function main() {
   svg.call(zoom);
 }
 
+
+function fancyScale() {
+  // incomplete
+  // extend d3.scaleOrdinal to behave like d3.scaleBand
+  const fn = d3.scaleOrdinal();
+  return Object.assign(fn, {
+    stepValue: 0,
+    step(val?: number) {
+      if (val === undefined) {
+        return this.stepValue;
+      }
+      this.stepValue = val;
+      return this;
+    },
+    paddingValue: 0,
+    padding(val?: number) {
+      if (val === undefined) {
+        return this.paddingValue;
+      }
+      this.paddingValue = val;
+    }
+  });
+}
 
 function centerOnDate(date: Date, hoursWidth = 8): [Date, Date] {
   return [addHours(date, -hoursWidth / 2), addHours(date, hoursWidth / 2)];
