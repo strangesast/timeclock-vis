@@ -33,12 +33,6 @@ function main() {
     .range([headerHeight, height])
     .padding(0.1);
 
-  // const dayAxisOffset = (sel) => {
-  //   const d = new Date();
-  //   const offset = (timeScale(d3.timeDay.offset(d, 1)) - timeScale(d)) / 2;
-  //   return sel.selectAll('text').attr('transform', `translate(${offset},0)`);
-  // };
-
   const timeScaleCopy = timeScale.copy();
 
   let timeAxis = d3.axisTop(timeScale);
@@ -47,23 +41,12 @@ function main() {
     .call(timeAxis)
     .attr('transform', `translate(0,${headerHeight})`);
 
-  // const dayAxis = (sel) => {
-  //   sel.selectAll('text').data();
-  // };
-
-  // svg.append('g').classed('x day', true)
-  //   .call(dayAxis)
-  //   .attr('transform', `translate(0,${headerHeight / 2})`);
-
-  svg.append('g').classed('days', true);
   svg.append('g').classed('records', true);
 
   function updateViewWidth() {
     ({width, height} = (svg.node() as any).getBoundingClientRect());
     timeScale.range([0, width]);
-    // bandScale.range([0, height]);
     svg.select('g.x.time').call(timeAxis);
-    // svg.select('g.x.day').call(dayAxis).call(dayAxisOffset);
     redraw(data);
   }
 
@@ -72,36 +55,34 @@ function main() {
   function redraw({shifts, employeeIds}: {shifts: Shift[], employeeIds: string[]}) {
     bandScale.domain(employeeIds).padding(0.1)
 
+    shifts.forEach(updatePos);
+
+    const t = d3.transition();
+
     svg.select('g.records')
       .selectAll('.record')
       .data(shifts, (d: any) => d.id)
       .join(
-        enter => enter.append('g')
-          .classed('record', true)
-          .call(s => {
-            s.append('rect')
-              .classed('fg', true)
-              .attr('height', bandScale.bandwidth())
-              .append('title')
-              .text(d => d.display.center)
-            s.append('text')
-              .attr('y', bandScale.bandwidth() / 2)
-              .classed('name', true)
-              .text(d => d.display.center)
-            s.append('text')
-              .attr('y', bandScale.bandwidth() / 2)
-              .classed('time start', true)
-              .text(d => d.display.left);
-            s.append('text')
-              .attr('y', bandScale.bandwidth() / 2)
-              .classed('time end', true)
-              .text(d => d.display.right);
-          }),
-        update => update,
-        exit => exit.remove(),
-      )
-      .each(updatePos)
-      .call(updateSel);
+        enter => {
+          const s = enter.append('g')
+            .classed('record', true)
+            .call(s => {
+              s.append('rect')
+                .classed('fg', true)
+                .attr('height', bandScale.bandwidth())
+                .append('title')
+                .text(d => d.display.center)
+              const g = s.append('g').classed('text', true);
+              g.append('text').attr('class', 'time left').text(d => d.display['left']);
+              g.append('text').attr('class', 'time center').text(d => d.display['center']);
+              g.append('text').attr('class', 'time right').text(d => d.display['right']);
+            });
+          s.call(updateSel).attr('opacity', 0).transition(t).attr('opacity', 1);
+          return s;
+        },
+        update => update.call(s => s.transition(t).call(updateSel)),
+        exit => exit.call(s => s.transition(t).attr('opacity', 0).remove()),
+      );
   }
 
   const throttledUpdate = throttle(
@@ -112,13 +93,9 @@ function main() {
   function zoomed() {
     timeScale = d3.event.transform.rescaleX(timeScaleCopy);
     timeAxis = timeAxis.scale(timeScale);
-    //dayAxis = dayAxis.scale(timeScale);
 
     svg.select('g.x.time')
       .call(timeAxis);
-
-    // svg.select('g.x.day')
-    //   .call(dayAxis).call(dayAxisOffset);;
 
     svg.select('g.records').selectAll('g.record')
       .each(updatePos)
@@ -130,61 +107,74 @@ function main() {
 
   function updatePos(d, i) {
     const { state, actual, typical } = d.shift;
+    let y, x, x0, x1, w, w1;
     switch (state) {
       case ShiftState.InProgress: {
-        const [x, x0] = [timeScale(actual.start), timeScale(now)];
-        const x1 = timeScale(typical.end);
-        d.pos.x = x;
-        d.pos.y = bandScale(d.employee.id);
-        d.pos.w = Math.max(x0 - x, 0); // disgusting
-        d.pos.w1 = Math.max(x1 - x, 0);
+        x = timeScale(actual.start);
+        x0 = timeScale(now);
+        x1 = timeScale(typical.end);
+        w = Math.max(x0 - x, 0); // disgusting
+        w1 = Math.max(x1 - x, 0);
         break;
       }
       case ShiftState.Complete: {
-        const [x, x0] = [timeScale(actual.start), timeScale(actual.end)];
-        d.pos.x = x;
-        d.pos.y = bandScale(d.employee.id);
-        d.pos.w = x0 - x;
+        x = timeScale(actual.start);
+        x0 = timeScale(actual.end);
+        w = x0 - x;
         break;
       }
       case ShiftState.Upcoming: {
-        const [x, x0] = [timeScale(typical.start), timeScale(typical.end)];
-        d.pos.x = x;
-        d.pos.y = bandScale(d.employee.id);
-        d.pos.w = x0 - x;
+        x = timeScale(typical.start);
+        x0 = timeScale(typical.end);
+        w = x0 - x;
         break;
       }
     }
+    d.pos.x = x;
+    d.pos.y = bandScale(d.employee.id);
+    d.pos.w = w;
+    d.pos.w1 = w1;
   }
 
   function updateSel(sel) {
-    sel.select('text.name')
+    const dy = bandScale.step() / 2;
+    const h = bandScale.bandwidth();
+
+    sel.select('text.center')
       .attr('text-anchor', 'middle')
-      .attr('alignment-baseline', 'middle')
-      .attr('transform', (d: any) =>
-        `translate(${Math.min(Math.max(d.pos.x + (d.shift.state === ShiftState.InProgress ? d.pos.w1 : d.pos.w) / 2, 80), width - 80)},${d.pos.y})`);
-    sel.select('text.time.start')
+      .attr('transform', (d: any) => {
+        let x = d.pos.x + (d.shift.state === ShiftState.InProgress ? d.pos.w1 : d.pos.w) / 2;
+        x = Math.min(Math.max(x, 80), width - 80);
+        return `translate(${x},${dy})`;
+      });
+
+    sel.select('text.time.left')
       .attr('text-anchor', 'start')
-      .attr('alignment-baseline', 'middle')
-      .attr('transform', (d: any) => `translate(${d.pos.x},${d.pos.y})`);
-    sel.selectAll('text').attr('y', bandScale.bandwidth() / 2);
-    sel.select('text.time.end')
+      .attr('transform', (d: any) => `translate(${d.pos.x},${dy})`);
+
+
+    sel.select('text.time.right')
       .attr('text-anchor', 'end')
-      .attr('alignment-baseline', 'middle')
-      .attr('transform', (d: any) => `translate(${d.pos.x + (d.shift.state === ShiftState.InProgress ? d.pos.w1 : d.pos.w)},${d.pos.y})`);
+      .attr('transform', (d: any) => {
+        const x = d.pos.x + (d.shift.state === ShiftState.InProgress ? d.pos.w1 : d.pos.w);
+        return `translate(${x},${dy})`;
+      });
+
+    sel.select('g.text').attr('transform', d => `translate(0,${d.pos.y})`);
+
     sel.select('rect.fg')
       .attr('fill', (d: any) => d.shift.state !== ShiftState.Upcoming ? colors.darkBlue: colors.lightBlue)
       .attr('transform', (d: any) => `translate(${d.pos.x},${d.pos.y})`)
-      .attr('height', bandScale.bandwidth())
+      .attr('height', h)
       .attr('width', (d: any) => d.pos.w);
-    sel.filter((d: any) => d.shift.state === ShiftState.InProgress).append('rect')
-      .attr('height', bandScale.bandwidth()).classed('bg', true);
+    //sel.filter((d: any) => d.shift.state === ShiftState.InProgress).append('rect')
+    //  .attr('height', bandScale.bandwidth()).classed('bg', true);
     sel.select('rect.bg')
       .attr('fill', colors.lightBlue)
       .attr('transform', (d: any) => `translate(${d.pos.x},${d.pos.y})`)
       .attr('width', (d: any) => d.pos.w1)
-      .attr('height', bandScale.bandwidth())
-      .lower()
+      .attr('height', h);
+    // .lower()
   }
 
   worker.getData(firstDateRange).then(newData => redraw(data = newData));
