@@ -47,6 +47,7 @@ function main() {
 
   function updateViewWidth() {
     ({width, height} = (svg.node() as any).getBoundingClientRect());
+    // zoom.translateExtent([[-width, 0], [width, 2*height]]);
     timeScale.range([0, width]);
     svg.select('g.x.time').call(timeAxis);
     redraw(data);
@@ -60,6 +61,7 @@ function main() {
 
   function redraw({shifts, employeeIds, employees}: {employees: {[id: string]: Employee}, shifts: Shift[], employeeIds: string[]}) {
     yScale.domain(employeeIds).range(Array.from(Array(employeeIds.length)).map((_, i) => headerHeight + rowPadding / 2 + i * rowHeight));
+    // zoom.translateExtent([[-Infinity, headerHeight], [Infinity, headerHeight + rowHeight*employeeIds.length]]);
 
     // bandScale.domain(employeeIds).padding(0.1)
 
@@ -107,7 +109,9 @@ function main() {
   function zoomed() {
     timeScale = d3.event.transform.rescaleX(timeScaleCopy);
     timeAxis = timeAxis.scale(timeScale);
-    yOffset = d3.event.transform.scale(1/d3.event.transform.k).y;
+    // if (d3.event.sourceEvent.type !== 'wheel') {
+    //   yOffset = d3.event.transform.scale(1/d3.event.transform.k).y;
+    // }
 
     svg.select('g.x.time')
       .call(timeAxis);
