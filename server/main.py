@@ -12,7 +12,7 @@ from aiohttp_xmlrpc.client import ServerProxy
 from aiohttp import web, WSCloseCode
 from datetime import datetime, date, timedelta
 
-from util import get_rpc_connection, parse_timecards
+from util import get_async_rpc_connection, parse_timecards
 
 
 # how often is timeclock polled by PC (set on PC)

@@ -3,10 +3,15 @@ import asyncio
 from aiohttp_xmlrpc.client import ServerProxy
 
 
-def get_rpc_connection(host='localhost', port=3003, password='password', username='admin'):
+def get_async_rpc_connection(host='localhost', port=3003, password='password', username='admin'):
     loop = asyncio.get_running_loop()
     uri = f'http://{username}:{password}@{host}:{port}/API/Timecard.ashx'
-    return ServerProxy(uri, loop=loop) #, use_datetime=True)
+    return ServerProxy(uri, loop=loop)
+
+
+def get_rpc_connection(host='localhost', port=3003, password='password', username='admin'):
+    uri = f'http://{username}:{password}@{host}:{port}/API/Timecard.ashx'
+    return xmlrpc.client.ServerProxy(uri, use_datetime=True)
 
 
 def merge_dups(arr):
