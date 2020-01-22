@@ -43,6 +43,8 @@ function main() {
     .call(timeAxis)
     .attr('transform', `translate(0,${headerHeight})`);
 
+  svg.append('g').classed('days', true);
+
   svg.append('g').classed('records', true);
 
   function updateViewWidth() {
@@ -59,15 +61,37 @@ function main() {
   const rowPadding = 4;
   const rowInnerHeight = rowHeight - rowPadding;
 
+  let dayWidth = 0, days = [], lowerDate, upperDate;
+  function updateDayWidth() {
+    dayWidth = timeScale(d3.timeDay.offset(lowerDate, 1)) - timeScale(lowerDate);
+  }
+
   function redraw({shifts, employeeIds, employees}: {employees: {[id: string]: Employee}, shifts: Shift[], employeeIds: string[]}) {
     yScale.domain(employeeIds).range(Array.from(Array(employeeIds.length)).map((_, i) => headerHeight + rowPadding / 2 + i * rowHeight));
     // zoom.translateExtent([[-Infinity, headerHeight], [Infinity, headerHeight + rowHeight*employeeIds.length]]);
 
     // bandScale.domain(employeeIds).padding(0.1)
 
+    ([lowerDate, upperDate] = timeScale.domain());
+    lowerDate = d3.timeDay.floor(lowerDate);
+    upperDate = d3.timeDay.ceil(upperDate);
+    days = d3.timeDay.range(lowerDate, upperDate, 1);
+
     shifts.forEach(updatePos);
 
     const t = d3.transition();
+
+    svg.select('g.days').selectAll('.day').data(days, (d: Date) => d.toISOString().slice(0, 10)).join(
+      enter => {
+        const s = enter.append('g').classed('day', true);
+        s.append('rect');
+        return s;
+      },
+      update => update,
+      exit => exit.remove(),
+    ).call(sel => {
+      sel.select('rect').attr('fill', 'transparent').attr('stroke', 'grey')
+    }).call(updateDaySel);
 
     svg.select('g.rows').selectAll('.row').data(employeeIds, (d: any) => d.id)
       .join(
@@ -113,10 +137,15 @@ function main() {
     //   yOffset = d3.event.transform.scale(1/d3.event.transform.k).y;
     // }
 
+    updateDayWidth();
+
+    svg.select('g.days').selectAll('.day').call(updateDaySel);
+
     svg.select('g.x.time')
       .call(timeAxis);
 
     svg.select('g.records').selectAll('g.record')
+      .call(sel => sel.interrupt())
       .each(updatePos)
       .call(updateSel);
 
@@ -154,6 +183,10 @@ function main() {
     d.pos.y = yOffset + (yScale(d.employee.id) as number) || 0;
     d.pos.w = w;
     d.pos.w1 = w1;
+  }
+
+  function updateDaySel(sel) {
+    sel.attr('transform', d => `translate(${timeScale(d)},0)`).select('rect').attr('width', dayWidth).attr('height', height);
   }
 
   function updateSel(sel) {
