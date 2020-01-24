@@ -12,11 +12,9 @@ services:
       context: .
       dockerfile: docker/server/Dockerfile
     image: strangesast/timeclock-vis_server
-    volumes:
-      - ./server/config.ini:/app/config.ini
     environment:
       - env=production
-      - AMG_HOST=127.0.0.1
+      - AMG_HOST=host.docker.internal
       - AMG_PORT=3003
       - AMG_USER=admin
       - SERVER_PORT=8081
