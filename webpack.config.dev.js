@@ -10,10 +10,16 @@ module.exports = merge(baseConfig, {
   ],
   devServer: {
     hot: true,
-    port: 8080,
+    port: 8081,
     host: '0.0.0.0',
     compress: true,
     disableHostCheck: true,
     contentBase: path.join(__dirname, 'dist'),
+    proxy: {
+      '/socket': {
+         target: 'ws://localhost:8080',
+         ws: true
+      },
+    },
   },
 });
