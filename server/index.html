@@ -106,7 +106,9 @@
     </div>`;
 
     let timeout;
-    socket.pipe(switchMap(data => {
+    socket.pipe(switchMap(drawAndUpdate)).subscribe();
+
+    function drawAndUpdate(data) {
       console.log('data', data);
       if (!data || !data.shifts || !data.employees) {
         return empty();
@@ -130,7 +132,8 @@
           render(template(data, now), document.body);
         }),
       );
-    })).subscribe();
+    }
+
 
     function sortBy(keys) {
       return function(a, b) {
