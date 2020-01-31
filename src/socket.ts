@@ -8,10 +8,15 @@ export class TimeoutError extends Error {
     this.name = 'TimeoutError';
   }
 }
-type FancyObservable = Observable<string>&{socket:WebSocket};
+type FancyObservable<T> = Observable<T>&{socket:WebSocket};
 
-function wrapSocketMessages(socket: WebSocket): FancyObservable {
-  const observable = new Observable<string>(function (subscriber) {
+type fn<T> = (s: string) => T;
+
+function wrapSocketMessages<T>(
+  socket: WebSocket,
+  parser: fn<T> = (s: string) => JSON.parse(s),
+): FancyObservable<T> {
+  const observable = new Observable<T>(function (subscriber) {
     socket.addEventListener('close', socketClose);
     socket.addEventListener('message', socketMessage);
     socket.addEventListener('error', socketError);
@@ -20,7 +25,7 @@ function wrapSocketMessages(socket: WebSocket): FancyObservable {
       subscriber.complete();
     }
     function socketMessage (e: MessageEvent) {
-      subscriber.next(e.data);
+      subscriber.next(parser(e.data));
     }
     function socketError (e: ErrorEvent) {
       subscriber.error(e.error);
@@ -28,10 +33,10 @@ function wrapSocketMessages(socket: WebSocket): FancyObservable {
     }
   });
   Object.assign(observable, {socket});
-  return observable as FancyObservable;
+  return observable as FancyObservable<T>;
 }
 
-export function socket(url, timeoutDuration = DEFAULT_TIMEOUT_DURATION): Observable<FancyObservable> {
+export function socket<T>(url, timeoutDuration = DEFAULT_TIMEOUT_DURATION): Observable<FancyObservable<T>> {
   return new Observable(function (subscriber) {
     const socket = new WebSocket(url);
 
@@ -56,7 +61,7 @@ export function socket(url, timeoutDuration = DEFAULT_TIMEOUT_DURATION): Observa
     }
 
     function socketClose(e) {
-      // should never be called?
+      console.log('socket closed');
       clearTimeout(timeout);
       clearListeners();
       subscriber.error(new Error(`socket closed unexpectedly (code ${e.code})`));

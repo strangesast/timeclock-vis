@@ -42,7 +42,6 @@ def parse_timecards(employee_id, timecards):
     timecards = list(merge_dups(timecards))
     for start, end in timecards:
         if start is None:
-            print('fucked')
             continue
         shift = {
                 'EmployeeId': employee_id,

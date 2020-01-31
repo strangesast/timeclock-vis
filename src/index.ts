@@ -44,7 +44,6 @@ const dataSource = socket(SOCKET_URL).pipe(
     }));
   }),
   share(),
-  map(messages => messages.pipe(map(str => JSON.parse(str)))),
   switchMap(messages =>
     merge(
       messages.pipe(
@@ -66,7 +65,7 @@ const dataSource = socket(SOCKET_URL).pipe(
     )
   ),
   repeat(),
-  switchMap(data => {
+  switchMap((data: any) => {
     if (!data || !data.shifts || !data.employees) {
       return of({});
     }
