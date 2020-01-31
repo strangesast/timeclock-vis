@@ -139,7 +139,9 @@ const template = (data, statusState) => html`
     ${headerTemplate}
     ${rowsTemplate(data.filteredShifts, data.now)}
   </div>
-  <div class="status">${statusState.message}</div>
+  <div class="status">
+    <p>${statusState.message}</p>
+  </div>
 `;
 
 function sortBy(keys) {
