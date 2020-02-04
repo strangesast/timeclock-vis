@@ -13,12 +13,24 @@ module.exports = {
     vendor: Object.keys(package.dependencies),
   },
   plugins: [
-    ...['index', 'simple', 'each'].map(key => new HtmlWebpackPlugin({
-      title: key[0].toUpperCase() + key.slice(1),
-      chunks: ['vendor', key],
-      template: `src/${key}.html`,
-      filename: `${key}.html`,
-    })),
+    new HtmlWebpackPlugin({
+      title: 'Index',
+      chunks: ['vendor', 'index'],
+      template: 'src/index.html',
+      filename: 'index.html',
+    }),
+    new HtmlWebpackPlugin({
+      title: 'Simple',
+      chunks: ['vendor', 'simple'],
+      template: 'src/simple.html',
+      filename: 'simple.html',
+    }),
+    new HtmlWebpackPlugin({
+      title: 'Each',
+      chunks: ['vendor', 'each'],
+      template: 'src/each.html',
+      filename: 'each.html',
+    }),
     new WorkerPlugin({
       globalObject: 'self',
     }),
