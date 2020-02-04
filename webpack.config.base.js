@@ -7,6 +7,7 @@ const package = require('./package.json')
 module.exports = {
   entry: {
     index: './src/index.ts',
+    next: './src/next.ts',
     simple: './src/simple.ts',
     each: './src/each.ts',
     worker: './src/data.worker.ts',
@@ -18,6 +19,12 @@ module.exports = {
       chunks: ['vendor', 'index'],
       template: 'src/index.html',
       filename: 'index.html',
+    }),
+    new HtmlWebpackPlugin({
+      title: 'Next',
+      chunks: ['vendor', 'next'],
+      template: 'src/next.html',
+      filename: 'next.html',
     }),
     new HtmlWebpackPlugin({
       title: 'Simple',

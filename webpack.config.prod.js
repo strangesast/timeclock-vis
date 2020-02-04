@@ -7,7 +7,7 @@ module.exports = merge(baseConfig, {
   mode: 'production',
   plugins: [
     new DefinePlugin({
-    	MODE: JSON.stringify('production'),
+    	DEV: JSON.stringify('false'),
     }),
     new BundleAnalyzerPlugin({analyzerMode: 'disabled', generateStatsFile: true}),
   ],

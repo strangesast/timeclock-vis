@@ -31,9 +31,45 @@ export interface Shift {
   };
 }
 
+/*
 export function formatTime(d: Date): string {
   return `${d.getHours() || 12}:${('0' + d.getMinutes()).slice(-2)}`;
 }
+*/
+
+export function formatDate (date: Date) {
+  const d = date.getDate();
+  const m = date.getMonth() + 1;
+  const hh = ('0' + date.getHours()).slice(-2);
+  const mm = ('0' + date.getMinutes()).slice(-2);
+  const yyyy = date.getFullYear();
+  return `${m}/${d}/${yyyy} ${hh}:${mm}`;
+}
+
+export function formatTime (d, ms = false) {
+  const h = d.getHours();
+  const mm = ('0' + d.getMinutes()).slice(-2);
+  let s = `${h}:${mm}`;
+  if (ms) {
+    s += '.' + ('0' + d.getSeconds()).slice(-2);
+  }
+  return s;
+};
+
+export function formatDuration (f) {
+  const hours = Math.floor(f / 3.6e6);
+  f -= hours * 3.6e6;
+  const minutes = Math.floor(f / 6e4);
+  f -= minutes * 6e4;
+  const seconds = Math.floor(f / 1e3);
+  let s;
+  if (hours > 0) {
+    s = hours + ':' + ('0' + minutes).slice(-2);
+  } else {
+    s = minutes;
+  }
+  return s + '.' + ('0' + seconds).slice(-2);
+};
 
 export function addHours(date: Date, hours: number): Date {
   const d = new Date(date);
@@ -63,4 +99,14 @@ export function debounce(fn, delay = 1000) {
     clearTimeout(call);
     call = setTimeout(() => fn(...args), delay);
   };
+}
+
+export function sortBy(keys) {
+  return function(a, b) {
+    for (const key of keys) {
+      if (a[key] < b[key]) return -1;
+      if (a[key] > b[key]) return 1;
+    }
+    return 0;
+  }
 }
