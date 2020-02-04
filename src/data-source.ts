@@ -1,4 +1,4 @@
-declare const DEV: string;
+declare const DEV: boolean;
 
 import { socket } from './socket';
 import {
@@ -59,7 +59,7 @@ interface DataSlice {
 // create formatted messages for what is happening
 // periodically update display as time passes (1s interval)
 
-if (DEV == 'production') {
+if (!DEV) {
   getDataSource = () => {
     const statusSource = new BehaviorSubject<{message: string}>({
       message: 'Waiting for connection',

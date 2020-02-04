@@ -8,7 +8,7 @@ module.exports = merge(baseConfig, {
   mode: 'development',
   plugins: [
     new DefinePlugin({
-    	DEV: JSON.stringify('true'),
+    	DEV: true,
     }),
     new BundleAnalyzerPlugin({analyzerMode: 'static', openAnalyzer: false}),
   ],

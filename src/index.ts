@@ -7,7 +7,7 @@ import { getDataSource } from './data-source';
 import { formatDuration, formatTime } from './util';
 
 
-declare const DEV: string;
+declare const DEV: boolean;
 console.log(`Running in DEVELOPMENT? ${DEV ? 'yes' : 'no'}`);
 
 // connect to socket, repeat after disconnect, retry after failure
