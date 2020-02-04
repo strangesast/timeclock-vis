@@ -53,6 +53,12 @@ interface DataSlice {
   };
 }
 
+// connect to websocket endpoint
+// retry on interval if unsuccessful / on failure
+// format data a bit (TODO: do this on the server side)
+// create formatted messages for what is happening
+// periodically update display as time passes (1s interval)
+
 if (DEV == 'production') {
   getDataSource = () => {
     const statusSource = new BehaviorSubject<{message: string}>({
@@ -62,30 +68,37 @@ if (DEV == 'production') {
     const RECENT_THRESHOLD = 3.6e6 * 2 // 2 hours
     const dataSource = socket(SOCKET_URL).pipe(
       tap(stream => {
-        // connected, waiting on data
+        // connected, waiting on data.  called for every new stream (socket connection)
         statusSource.next({message: 'Got connection! Waiting for data.'});
       }),
       retryWhen(attempts => {
-        const attemptStart = new Date();
+        // called on failure / disconnect.  attempts is a stream of errors
+
+        const attemptStart = new Date(); // store when disconnect first happened
+        const RETRY_INTERVAL = 1e5; // retry every 10s
+        const RETRY_UPDATE_INTERVAL = 1000; // update message every 1s
+
+        // called 100,000 times once per retry interval. ~1 day of retrying
         return range(1, 1e5).pipe(
           zip(attempts),
           flatMap(([attemptNumber, err]) => {
-            const wait = 1e4; // 10s
             let now = new Date();
-            const fut = new Date(+now + wait);
-            const msg = (num, t) => `Connection failed: Attempt ${num}, retrying in ${t.toFixed(0)}s. Retrying since ${formatDate(attemptStart)}`;
-            statusSource.next({message: msg(attemptNumber, wait / 1000)});
-            const t = timer(wait).pipe(share());
+            const nextRetryDate = new Date(+now + RETRY_INTERVAL);
+            const msg = (num, ms) => `Connection failed: Attempt ${num}, retrying in ${(ms / 1000).toFixed(0)}s. Retrying since ${formatDate(attemptStart)}`;
+            statusSource.next({ message: msg(attemptNumber, RETRY_INTERVAL) });
+            const t = timer(RETRY_INTERVAL).pipe(share()); // countdown until next retry
             return merge(
-              interval(1000).pipe(
+              interval(RETRY_UPDATE_INTERVAL).pipe(
                 tap(() => {
+                  // reuse now var
                   now = new Date();
-                  const d = Math.round((+fut - +now)/1000);
-                  statusSource.next({message: msg(attemptNumber, d)});
+                  // update retry text
+                  statusSource.next({message: msg(attemptNumber, Math.round(+nextRetryDate - +now))});
                 }),
                 takeUntil(t),
                 ignoreElements()
               ),
+              // after retry countdown complete, notify of attempt
               t.pipe(finalize(() => {
                 statusSource.next({message: `Retrying...`});
               })),
@@ -93,9 +106,12 @@ if (DEV == 'production') {
           })
         );
       }),
+      // need to share so messages in switchMap can get first
       share(),
       switchMap(messages =>
         merge(
+          // after just the first message, notify of normal state. notify when
+          // normal state reached, then resume normal text
           messages.pipe(
             first(),
             tap(() => {
@@ -114,12 +130,13 @@ if (DEV == 'production') {
           })),
         )
       ),
+      // after completion (connection lost with error or otherwise) start from the beginning
       repeat(),
+      // for each data, change the data format a bit (interpret dates & so on) TODO: move this elsewhere
       switchMap((data: any) => {
         if (!data || !data.shifts || !data.employees) {
           return of({});
         }
-    
         data['lastPoll'] = new Date(data['lastPoll']);
         data['nextPoll'] = new Date(data['nextPoll']);
         data['nextRetry'] = new Date(data['nextRetry']);
@@ -141,9 +158,11 @@ if (DEV == 'production') {
         );
       })
     );
+    // merge the data data update & status update observables into one observable
     return combineLatest(dataSource, statusSource, (data, status) => ({ data, status }))
   }
 } else {
+  // generate some fake data for development
   getDataSource = () => {
     return interval(1000).pipe(
       map(i => {

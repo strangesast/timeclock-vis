@@ -19,18 +19,30 @@ getDataSource().subscribe(
   () => console.log('complete'),
 );
 
-const summaryTemplate = (now, lastPoll, nextPoll) => html`
-  <div>${formatTime(now, true)}</div>
-  <div>As of ${formatTime(lastPoll) + (lastPoll.getDate() != now.getDate() ? ' (' + (lastPoll.getMonth() + 1) + '/' + ('0' + lastPoll.getDate()).slice(-2) + ')' : '')}</div>
-  <div>Next update: ${formatTime(nextPoll)}${nextPoll < now ? ' (LATE)' : ''}</div>
-`;
+const summaryTemplate = (now, lastPoll, nextPoll) => {
+  const asOf = formatTime(lastPoll);
+  const notToday = lastPoll.getDate() != now.getDate();
+  // if lastPoll was yesterday (or earlier) include the date next to the time
+  const ifDiffDay = notToday ? ` (${lastPoll.getMonth() + 1}/${('0' + lastPoll.getDate()).slice(-2)})` : '';
+
+  return html`
+    <div>${formatTime(now, true)}</div>
+    <div>As of ${asOf}${ifDiffDay}</div>
+    <div>Next update: ${formatTime(nextPoll)}${nextPoll < now ? ' (LATE)' : ''}</div>
+  `;
+}
+
 const headerTemplate = html`
-  <div>Name</div><div>Clock In</div><div>Clock Out</div><div class="total">Total</div>
+  <div>Name</div>
+  <div>Clock In</div>
+  <div>Clock Out</div>
+  <div class="total">Total</div>
 `;
 
 const employeeNameTemplate = (empl) => html`
   ${empl['FullName']}
 `;
+
 const shiftTimeTemplate = (d) => html`
   <span>${d ? formatTime(d) : 'None'}</span>
 `;
