@@ -3,3 +3,5 @@
 /dist/
 /env/
 /icons/
+**/__pycache__
+**/*.pyc

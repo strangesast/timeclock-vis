@@ -6,7 +6,6 @@ import weakref
 import configparser
 import xmlrpc.client
 import logging
-from pprint import pprint
 from contextvars import ContextVar
 from aiohttp_xmlrpc.client import ServerProxy
 from aiohttp import web, WSCloseCode
@@ -46,7 +45,7 @@ async def websocket_handler(request):
 
     request.app['websockets'].add(ws)
 
-    print('new client')
+
     s = json.dumps(last_state, default=default)
     await ws.send_str(s)
 
@@ -116,8 +115,6 @@ async def check_timeclock(app):
             new_state['nextRetry'] = now + diff;
             state = {**state, **new_state}
             last_state = state
-            print('sending...')
-            pprint(state)
             for ws in app['websockets']:
                 await ws.send_str(json.dumps(state, default=default))
             await asyncio.sleep(diff.total_seconds())

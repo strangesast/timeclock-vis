@@ -7,10 +7,7 @@ services:
     image: strangesast/timeclock-vis_nginx
     ports:
       - '8080:8080'
-    deploy:
-      mode: global
-      restart_policy:
-        max_attempts: 10
+    restart: always
   server:
     build:
       context: .
@@ -22,7 +19,4 @@ services:
       - AMG_PORT=3003
       - AMG_USER=admin
       - SERVER_PORT=8081
-    deploy:
-      mode: global
-      restart_policy:
-        max_attempts: 10
+    restart: always
