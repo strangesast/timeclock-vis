@@ -11,6 +11,11 @@ module.exports = merge(baseConfig, {
     	DEV: true,
     }),
     new BundleAnalyzerPlugin({analyzerMode: 'static', openAnalyzer: false}),
+    new CopyPlugin([
+      {from: 'icons', to: 'icons'},
+      {from: 'data/*.json'},
+      {from: 'manifest.json'},
+    ]),
   ],
   devServer: {
     port: 8081,

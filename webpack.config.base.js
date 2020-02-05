@@ -43,12 +43,6 @@ module.exports = {
     new WorkerPlugin({
       globalObject: 'self',
     }),
-    // development only. TODO: move this
-    new CopyPlugin([
-      {from: 'icons', to: 'icons'},
-      {from: 'data/*.json'},
-      {from: 'manifest.json'},
-    ]),
   ],
   module: {
     rules: [
