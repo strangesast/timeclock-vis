@@ -9,9 +9,10 @@ run npm run-script build
 
 from nginx
 workdir /usr/share/nginx/html
+copy favicon.ico .
+copy icons ./icons
 copy --from=build /app/dist ./
 copy manifest.json .
-copy icons ./icons
 copy nginx/nginx.conf /etc/nginx/nginx.conf
 expose 8080
 volume /var/log/nginx/log
