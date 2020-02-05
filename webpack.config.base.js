@@ -1,5 +1,4 @@
 const WorkerPlugin = require('worker-plugin');
-const CopyPlugin = require('copy-webpack-plugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin')
 
 const package = require('./package.json')
