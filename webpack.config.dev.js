@@ -13,7 +13,6 @@ module.exports = merge(baseConfig, {
     new BundleAnalyzerPlugin({analyzerMode: 'static', openAnalyzer: false}),
   ],
   devServer: {
-    hot: true,
     port: 8081,
     host: '0.0.0.0',
     compress: true,

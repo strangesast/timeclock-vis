@@ -6,6 +6,9 @@ import { repeat as templateRepeat } from 'lit-html/directives/repeat';
 import { getDataSource } from './data-source';
 import { formatDuration, formatTime } from './util';
 
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js');
+}
 
 declare const DEV: boolean;
 console.log(`Running in DEVELOPMENT? ${DEV ? 'yes' : 'no'}`);

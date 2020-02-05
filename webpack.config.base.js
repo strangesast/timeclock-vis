@@ -1,8 +1,9 @@
-const path = require('path');
-const HtmlWebpackPlugin = require('html-webpack-plugin')
 const WorkerPlugin = require('worker-plugin');
 const CopyPlugin = require('copy-webpack-plugin');
+const HtmlWebpackPlugin = require('html-webpack-plugin')
+
 const package = require('./package.json')
+
 
 module.exports = {
   entry: {
@@ -11,6 +12,7 @@ module.exports = {
     simple: './src/simple.ts',
     each: './src/each.ts',
     worker: './src/data.worker.ts',
+    sw: './src/sw.js',
     vendor: Object.keys(package.dependencies),
   },
   plugins: [
@@ -41,6 +43,7 @@ module.exports = {
     new WorkerPlugin({
       globalObject: 'self',
     }),
+    // development only. TODO: move this
     new CopyPlugin([
       {from: 'icons', to: 'icons'},
       {from: 'data/*.json'},
