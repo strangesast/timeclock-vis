@@ -17,10 +17,31 @@
       height: 100%;
       width: 100%;
     }
-    body > svg .axis .tick line {
-      stroke: rgba(0, 0, 0, 0.2);
+    body > svg > rect.background {
+      fill: white;
     }
-    body > svg text.date-label {
+    body > svg .axis .tick line {
+      stroke: lightgrey;
+    }
+    body > svg.dark > rect.background {
+      fill: black;
+    }
+    body > svg.dark .axis .tick line {
+      stroke: grey;
+    }
+    body > svg.dark text {
+      fill: white;
+    }
+    body > svg.dark text.time {
+      fill: black;
+    }
+    body > svg.dark .axis {
+      color: white;
+    }
+    body > svg.dark .axis line {
+      stroke: white;
+    }
+    body > svg.dark text.date-label {
       text-anchor: middle;
     }
     body > svg text.shift-label {
