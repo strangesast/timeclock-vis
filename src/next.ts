@@ -9,16 +9,31 @@ enum ShiftState {
   Incomplete = 'incomplete',
 }
 
-interface ShiftComponent {
+enum ShiftComponentType {
+  Actual = 'actual',
+  Projected = 'projected',
+}
+
+interface BaseShiftComponent {
   x: number;
   w: number;
-  fill: string;
+  fill: d3.Color;
   start: Date;
   end: Date;
   duration: number;
-  state: ShiftState;
   employeeId: string; // needed for fill (gay)
 }
+
+interface ProjectedShiftComponent extends BaseShiftComponent {
+  type: ShiftComponentType.Projected;
+}
+
+interface ActualShiftComponent extends BaseShiftComponent {
+  type: ShiftComponentType.Actual;
+  state: ShiftState;
+}
+
+type ShiftComponent = ProjectedShiftComponent|ActualShiftComponent;
 
 interface Shift {
   id: string;
@@ -26,6 +41,7 @@ interface Shift {
     id: string;
     name: string;
   }
+  start: Date;
   components: ShiftComponent[];
   punches: {
     date: Date
@@ -47,6 +63,7 @@ let xScale = d3.scaleTime();
 let topAxis = d3.axisTop(xScale);
 let bottomAxis = d3.axisBottom(xScale);
 const yScale = d3.scaleBand().padding(0.3).align(1);
+
 const colorScale = d3.scaleOrdinal(d3.schemePaired);
 
 
@@ -74,20 +91,24 @@ function size() {
   ({ width, height } = svg.node().getBoundingClientRect());
   xScale.range([0, width]);
   yScale.range([40, height - 40]);
+  svg.node().style.setProperty('--shift-label-size', `${(yScale.step() - yScale.bandwidth()) / 10 * 2 / 3}px`);
 }
 
 function updatePositions(shift: Shift) {
-  const fill = colorScale(shift.employee.id);
   let x = 0;
   for (let i = shift.components.length - 1; i >= 0; i--) {
     const comp = shift.components[i];
+    let fill = d3.color(colorScale(shift.employee.id));
+    if (comp.type == ShiftComponentType.Projected) {
+      fill = fill.brighter(0.9);
+    }
     x = xScale(comp.start);
     comp.fill = fill;
     comp.x = x;
     comp.w = xScale(comp.end) - comp.x;
   }
   shift.y = yScale(shift.employee.id);
-  shift.x = Math.max(x, 0);
+  shift.x = Math.max(xScale(shift.start), 0);
   return shift;
 }
 
@@ -102,22 +123,32 @@ function drawAxis() {
   interface DateLabel {
     date: Date;
     id: string;
-    x: number;
   }
   const labels: DateLabel[] = [];
   const [minDate, maxDate] = xScale.domain();
+  const spacing = xScale(d3.timeDay.offset(minDate, 1)) - xScale(minDate);
   let date = new Date(minDate);
-  date.setHours(12, 0, 0, 0);
+  date.setHours(0, 0, 0, 0);
+  const stickyCenter = +maxDate - +minDate < 8.64e7;
   for (; date < maxDate; date.setDate(date.getDate() + 1)) {
-    labels.push({id: date.toISOString().slice(0, 10), date: new Date(date), x: xScale(date)});
+    labels.push({ id: date.toISOString().slice(0, 10), date: new Date(date) });
   }
   svg.select('g.axis.date').selectAll<SVGElement, DateLabel>('g').data(labels, d => d.id)
     .join(
-      enter => enter.append('g').call(s => s.append('text').text(d => formatDate(d.date))),
+      enter => enter.append('g').call(s => s.append('text').classed('date-label', true).text(d => formatDate(d.date))),
       update => update,
       exit => exit.remove(),
     )
-    .attr('transform', (d, i) => `translate(${d.x},${30})`)
+    .attr('transform', function (d, i) {
+      const {width: w} = (d3.select(this).select('text').node() as SVGGraphicsElement).getBBox();
+      const padding = w / 2 + 8;
+      let x = xScale(d.date);
+      if (stickyCenter) {
+        x = Math.min(x + spacing - padding, Math.max(width / 2, x + padding));
+      }
+
+      return `translate(${x},${30})`;
+    })
 }
 
 function main({employeeIds, shifts}: DataSet) {
@@ -130,7 +161,8 @@ function main({employeeIds, shifts}: DataSet) {
       enter => enter.append('g').classed('shift', true)
         .call(s => s.append('g').classed('text', true)
           .call(s => s.append('text')
-            .attr('y', 4)
+            .classed('shift-label', true)
+            .attr('y', 6)
             .attr('text-anchor', 'start')
             .attr('alignment-baseline', 'hanging')
             .text(d => d.employee.name)
@@ -149,7 +181,9 @@ function main({employeeIds, shifts}: DataSet) {
       .attr('transform', d => `translate(${d.x},0)`)
       .call(s => s.select('rect')
         .attr('width', d => d.w)
-        .attr('fill', d => d.fill)
+        .attr('fill', d => d.fill.toString())
+        .filter(d => d.type == ShiftComponentType.Projected)
+        .attr('opacity', 0.5)
       )
       .call(s => s.select('text').attr('x', 4).text(d => formatTime(d.start)))
 
@@ -173,30 +207,70 @@ yScale.domain(employeeIds);
 colorScale.domain(employeeIds);
 
 
+const now = new Date(today);
+now.setHours(14, 22);
+
 const shifts: Shift[] = employees.map((employee, i) => {
   const h = Math.floor((6 + (i / employees.length) * 10) * 2) / 2
-  const punches = Array.from(Array(4));
-  punches[0] = new Date(today);
-  punches[0].setHours(h);
+  const punches = []
+  let punch, projectedStart, projectedEnd;
 
-  punches[1] = new Date(punches[0]);
-  punches[1].setHours(punches[1].getHours() + 4);
+  punch = new Date(today);
+  punch.setHours(h);
+  projectedStart = new Date(punch);
 
-  punches[2] = new Date(punches[1]);
-  punches[2].setHours(punches[2].getHours(), punches[2].getMinutes() + 30);
+  if (punch < now) punches.push(punch);
 
-  punches[3] = new Date(punches[2]);
-  punches[3].setHours(punches[3].getHours() + 4);
+  punch = new Date(punch);
+  punch.setHours(punch.getHours() + 4);
 
-  const components: ShiftComponent[] = Array.from(Array(2));
+  if (punch < now) punches.push(punch);
+
+  punch = new Date(punch);
+  punch.setHours(punch.getHours(), punch.getMinutes() + 30);
+
+  if (punch < now) punches.push(punch);
+
+  punch = new Date(punch);
+  punch.setHours(punch.getHours() + 4);
+  projectedEnd = new Date(punch);
+
+  if (punch < now) punches.push(punch);
+
+  const components: ShiftComponent[] = [];
+  const employeeId = employee.id;
   for (let i = 0; i < 2; i++) {
     const start = punches[i * 2];
-    const end = punches[i * 2 + 1];
+    if (start == null) {
+      break;
+    }
+    let end = punches[i * 2 + 1];
+    let state: ShiftState;
+
+    if (end == null) {
+      end = now;
+      state = ShiftState.Complete;
+    } else {
+      state = ShiftState.Complete;
+    }
     const duration = end - start;
-    const employeeId = employee.id;
-    const state = ShiftState.Complete;
-    components[i] = {state, start, end, duration, employeeId, x: 0, w: 0, fill: ''};
+
+    components.push({type: ShiftComponentType.Actual, state, start, end, duration, employeeId, x: 0, w: 0, fill: d3.color('')});
   }
+
+  if (punches.length != 4) {
+    components.unshift({
+      type: ShiftComponentType.Projected,
+      start: new Date(punches.length == 3 ? punches[2] : punches.length == 1 ? punches[0] : projectedStart),
+      end: projectedEnd,
+      duration: projectedEnd - projectedStart,
+      employeeId,
+      x: 0,
+      w: 0,
+      fill: d3.color(''),
+    });
+  }
+
   return updatePositions({
     x: 0,
     y: 0,
@@ -204,6 +278,7 @@ const shifts: Shift[] = employees.map((employee, i) => {
     employee,
     components,
     punches: punches.map(date => ({date})),
+    start: new Date(punches.length > 0 ? punches[0] : projectedStart),
   });
 });
 
@@ -222,7 +297,7 @@ function zoomed() {
       .attr('transform', d => `translate(${d.x},0)`)
       .call(s => s.select('rect')
         .attr('width', d => d.w)
-        .attr('fill', d => d.fill)
+        .attr('fill', d => d.fill.toString())
       )
       .call(s => s.select('text').attr('x', 4).text(d => formatTime(d.start)))
     );
