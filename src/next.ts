@@ -4,6 +4,16 @@ const LOCALE = 'en';
 
 const svg : d3.Selection<SVGElement, {}, HTMLElement, any> = d3.select('svg');
 
+enum EmployeeShiftColor {
+  BLUE,
+  GREEN,
+  RED,
+  ORANGE,
+  PINK,
+}
+
+const EMPLOYEE_SHIFT_COLORS = Object.values(EmployeeShiftColor).filter(v => typeof v === 'string');
+
 interface Employee {
   id: string;
   name: string;
@@ -11,7 +21,9 @@ interface Employee {
     start: Date;
     end: Date;
   };
+  color: EmployeeShiftColor;
 }
+
 
 enum ShiftState {
   Complete = 'complete',
@@ -70,7 +82,11 @@ const shifts: Shift[] = [];
 // all employees
 const employees: Employee[] = [];
 
-const today = new Date();
+const now = new Date();
+now.setDate(now.getDate() - now.getDay() + 3);
+now.setHours(14, 22);
+
+const today = new Date(now);
 today.setHours(0, 0, 0, 0);
 
 let width, height;
@@ -79,12 +95,18 @@ let topAxis = d3.axisTop(xScale);
 let bottomAxis = d3.axisBottom(xScale);
 const yScale = d3.scaleBand().padding(0.3).align(1);
 
-const colorScale = d3.scaleOrdinal(d3.schemePaired);
+const colorScale = d3.scaleOrdinal();
+{
+  const colors = d3.schemePaired.slice(0, 10);
+  const pairs = [];
+  for (let i = 0; i < colors.length; i+=2) {
+    const pair = [colors[i+1], colors[i]];
+    pairs.push(pair);
+  }
+  colorScale.domain(pairs.map((_, i) => i.toString())).range(pairs);
+}
 
 const zoom = d3.zoom().on('zoom', zoomed);
-
-const now = new Date(today);
-now.setHours(14, 22);
 
 
 size();
@@ -154,9 +176,11 @@ function updatePositions(shift: Shift) {
   let x = 0;
   for (let i = shift.components.length - 1; i >= 0; i--) {
     const comp = shift.components[i];
-    let fill = d3.color(colorScale(shift.employee.id));
+    let fill;
     if (comp.type == ShiftComponentType.Projected) {
-      fill = fill.brighter(0.9);
+      fill = d3.color(colorScale(shift.employee.id)[1]);
+    } else {
+      fill = d3.color(colorScale(shift.employee.id)[0]);
     }
     x = xScale(comp.start);
     comp.fill = fill;
@@ -213,10 +237,14 @@ function drawAxis() {
 }
 
 function main({employeeIds, shifts}: DataSet) {
+  console.log('shifts', shifts);
+  console.log(employees);
 
   yScale.domain(employeeIds);
   shifts.forEach(updatePositions);
+
   colorScale.domain(employeeIds);
+  colorScale.range(d3.schemePaired.filter((_, i) => i % 2));
 
   drawAxis();
 
@@ -228,9 +256,9 @@ function main({employeeIds, shifts}: DataSet) {
         .call(s => s.append('g').classed('text', true)
           .call(s => s.append('text')
             .classed('shift-label', true)
-            .attr('y', 6)
+            .attr('y', 10)
             .attr('text-anchor', 'start')
-            .attr('alignment-baseline', 'hanging')
+            .attr('alignment-baseline', 'bottom')
             .text(d => d.employee.name)
           )
         )
@@ -263,7 +291,7 @@ function main({employeeIds, shifts}: DataSet) {
         .attr('width', d => d.w)
         .attr('fill', d => d.fill.toString())
         .attr('stroke', d => d.fill.toString())
-        .call(s => s.filter(d => d.type == ShiftComponentType.Projected).attr('opacity', 0.5))
+        // .call(s => s.filter(d => d.type == ShiftComponentType.Projected).attr('opacity', 0.5))
       )
       .call(s => s.select('text').classed('time', true).attr('x', 4).text(d => formatTime(d.start)))
 
@@ -286,7 +314,7 @@ function zoomed() {
       .attr('transform', d => `translate(${d.x},0)`)
       .call(s => s.select('rect')
         .attr('width', d => d.w)
-        .attr('fill', d => d.fill.toString())
+        // .attr('fill', d => d.fill.toString())
       )
       .call(s => s.select('text').attr('x', 4).text(d => formatTime(d.start)))
     );
@@ -320,6 +348,7 @@ function setupData(now) {
       id,
       name: `Employee ${i + 1}`,
       shift: { start, end },
+      color: EmployeeShiftColor[EMPLOYEE_SHIFT_COLORS[i % EMPLOYEE_SHIFT_COLORS.length]],
     });
   }
   
@@ -336,11 +365,13 @@ function setupData(now) {
   for (let i = 0; i < l; i++) {
     const employee = employees[i];
     for (let j = 1; j < days.length - 1; j++) { 
+      const day = days[j];
+
       const h = Math.floor((6 + (i / l) * 10) * 2) / 2
       const punches = []
       let punch, projectedStart, projectedEnd;
   
-      punch = new Date(today);
+      punch = new Date(day);
       punch.setHours(h);
       projectedStart = new Date(punch);
   
@@ -420,6 +451,7 @@ function byEmployee(employeeId, centerDate: Date) {
 }
 
 function getData(now, [minDate, maxDate]): DataSet {
+  console.log(minDate, maxDate);
   const employeeIds = [];
   const filteredShifts = [];
   for (const shift of shifts) {
@@ -441,7 +473,7 @@ setupData(now);
 }
 
 // lazy, not right yet
-window.onresize = () => {
-  size();
-  drawAxis();
-}
+//window.onresize = () => {
+//  size();
+//  drawAxis();
+//}
