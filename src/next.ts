@@ -20,6 +20,7 @@ interface Employee {
   shift: {
     start: Date;
     end: Date;
+    duration: number;
   };
   color: EmployeeShiftColor;
 }
@@ -66,6 +67,7 @@ interface Shift {
   start: Date; // start of first component (actual or projected)
   end: Date; // end of last component (actual or projected)
   duration: number; // total so far
+  expectedDuration: number;
   components: ShiftComponent[];
   punches: {
     date: Date
@@ -243,8 +245,8 @@ function main({employeeIds, shifts}: DataSet) {
   yScale.domain(employeeIds);
   shifts.forEach(updatePositions);
 
-  colorScale.domain(employeeIds);
-  colorScale.range(d3.schemePaired.filter((_, i) => i % 2));
+  // colorScale.domain(employeeIds);
+  // colorScale.range(d3.schemePaired.filter((_, i) => i % 2));
 
   drawAxis();
 
@@ -261,12 +263,26 @@ function main({employeeIds, shifts}: DataSet) {
             .attr('alignment-baseline', 'bottom')
             .text(d => d.employee.name)
           )
-          .call(s => s.append('text')
-            .attr('y', 10)
-            .attr('alignment-baseline', 'bottom')
-            .attr('x', () => s.select<SVGGraphicsElement>('text.shift-label').node().getBBox().width + 4)
-            .text(d => `${formatDuration(d.duration)}`)
-          ),
+          .filter(d => d.started)
+          .call(s => s.append('g').classed('duration', true)
+            .attr('transform', `translate(${s.select<SVGGraphicsElement>('text.shift-label').node().getBBox().width + 4},0)`)
+            .each(function (d) {
+              const s = d3.select(this);
+              const c = colorScale(d.employee.id);
+              return drawMiniPie(
+                s,
+                d.duration / d.expectedDuration,
+                c[0],
+                c[1],
+              );
+            })
+            .call(s => s.append('text')
+              .attr('x', 24)
+              .attr('y', 10)
+              .attr('alignment-baseline', 'bottom')
+              .text(d => `${formatDuration(d.duration)}`)
+            ),
+          )
         )
         .call(s => s.selectAll('g.group').data(d => d.components).enter().append('g').classed('group', true)
           .call(e => e.append('rect').attr('stroke-width', 4).attr('height', bandwidth).attr('rx', 8))
@@ -365,7 +381,7 @@ function setupData(now) {
     employees.push({
       id,
       name: `Employee ${i + 1}`,
-      shift: { start, end },
+      shift: { start, end, duration: 2.88e7 },
       color: EmployeeShiftColor[EMPLOYEE_SHIFT_COLORS[i % EMPLOYEE_SHIFT_COLORS.length]],
     });
   }
@@ -475,13 +491,27 @@ function setupData(now) {
         start: new Date(punches.length > 0 ? punches[0] : projectedStart),
         end: new Date(punches.length > 0 && punches.length % 2 == 0 ? punches[punches.length - 2] : projectedEnd),
         duration: cumDuration,
+        expectedDuration: employee.shift.duration,
       });
     }
   }
 }
 
-function drawMiniPie() {
-
+const arc = d3.arc().outerRadius(10);
+function drawMiniPie(sel, frac: number, fillA, fillB, radius = 10) {
+  frac = Math.min(Math.max(frac, 0), 1);
+  return sel.append('g')
+    .attr('transform', `translate(${radius},${radius/2})`)
+    .call(s => s.append('circle').attr('r', 10).attr('fill', fillB))
+    .call(s => s.append('path')
+      .attr('fill', fillA)
+      .attr('d', d => arc({
+        startAngle: 0,
+        endAngle: 2 * Math.PI * frac,
+        outerRadius: radius,
+        innerRadius: 0,
+      }))
+    );
 }
 
 function byEmployee(employeeId, centerDate: Date) {
