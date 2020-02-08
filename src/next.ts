@@ -148,7 +148,6 @@ function size() {
   topAxis.scale(xScale);
   bottomAxis.scale(xScale);
   yScale.range([40, height - 40]);
-  svg.node().style.setProperty('--shift-label-size', `${(yScale.step() - yScale.bandwidth()) / 10 * 2 / 3}px`);
 }
 
 function updatePositions(shift: Shift) {
