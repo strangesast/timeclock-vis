@@ -1,5 +1,5 @@
 import * as d3 from 'd3';
-import { formatTime } from './util';
+import { formatDuration, formatTime } from './util';
 const LOCALE = 'en';
 
 const svg : d3.Selection<SVGElement, {}, HTMLElement, any> = d3.select('svg');
@@ -42,6 +42,7 @@ interface BaseShiftComponent {
   start: Date;
   end: Date;
   duration: number;
+  showTime: boolean;
   employeeId: string; // needed for fill (gay)
 }
 
@@ -64,10 +65,12 @@ interface Shift {
   }
   start: Date; // start of first component (actual or projected)
   end: Date; // end of last component (actual or projected)
+  duration: number; // total so far
   components: ShiftComponent[];
   punches: {
     date: Date
   }[],
+  started: boolean;
   y: number;
   x: number;
 }
@@ -93,7 +96,7 @@ let width, height;
 let xScale = d3.scaleTime();
 let topAxis = d3.axisTop(xScale);
 let bottomAxis = d3.axisBottom(xScale);
-const yScale = d3.scaleBand().padding(0.3).align(1);
+const yScale = d3.scaleBand().padding(0.6);
 
 const colorScale = d3.scaleOrdinal();
 {
@@ -237,9 +240,6 @@ function drawAxis() {
 }
 
 function main({employeeIds, shifts}: DataSet) {
-  console.log('shifts', shifts);
-  console.log(employees);
-
   yScale.domain(employeeIds);
   shifts.forEach(updatePositions);
 
@@ -261,10 +261,31 @@ function main({employeeIds, shifts}: DataSet) {
             .attr('alignment-baseline', 'bottom')
             .text(d => d.employee.name)
           )
+          .call(s => s.append('text')
+            .attr('y', 10)
+            .attr('alignment-baseline', 'bottom')
+            .attr('x', () => s.select<SVGGraphicsElement>('text.shift-label').node().getBBox().width + 4)
+            .text(d => `${formatDuration(d.duration)}`)
+          ),
         )
         .call(s => s.selectAll('g.group').data(d => d.components).enter().append('g').classed('group', true)
           .call(e => e.append('rect').attr('stroke-width', 4).attr('height', bandwidth).attr('rx', 8))
-          .call(e => e.append('text').attr('alignment-baseline', 'middle').attr('y', bandwidth / 2))
+          .call(s => s.filter(d => d.showTime)
+            .call(e => e.append('text')
+              .classed('time start', true)
+              .attr('alignment-baseline', 'middle')
+              .attr('x', 4)
+              .attr('y', bandwidth / 2)
+              .text(d => formatTime(d.start))
+            )
+            .call(e => e.append('text')
+              .classed('time end', true)
+              .attr('text-anchor', 'end')
+              .attr('alignment-baseline', 'middle')
+              .attr('y', bandwidth / 2)
+              .text(d => formatTime(d.end))
+            )
+          )
           .call(s =>
             s.filter(d => d.type == ShiftComponentType.Actual && d.state == ShiftState.Incomplete)
               .select('rect')
@@ -291,10 +312,9 @@ function main({employeeIds, shifts}: DataSet) {
         .attr('width', d => d.w)
         .attr('fill', d => d.fill.toString())
         .attr('stroke', d => d.fill.toString())
-        // .call(s => s.filter(d => d.type == ShiftComponentType.Projected).attr('opacity', 0.5))
       )
-      .call(s => s.select('text').classed('time', true).attr('x', 4).text(d => formatTime(d.start)))
-
+      .call(s => s.select('text.time.start').attr('opacity', d => d.w > 120 ? 1 : 0))
+      .call(s => s.select('text.time.end').attr('opacity', d => d.w > 200 ? 1 : 0).attr('x', d => d.w - 4))
     );
 }
 
@@ -312,11 +332,9 @@ function zoomed() {
     .call(s => s.select('g.text').attr('transform', d => `translate(${d.x + 4},-20)`))
     .call(s => s.selectAll<SVGElement, ShiftComponent>('g.group')
       .attr('transform', d => `translate(${d.x},0)`)
-      .call(s => s.select('rect')
-        .attr('width', d => d.w)
-        // .attr('fill', d => d.fill.toString())
-      )
-      .call(s => s.select('text').attr('x', 4).text(d => formatTime(d.start)))
+      .call(s => s.select('rect').attr('width', d => d.w))
+      .call(s => s.select('text.time.start').attr('opacity', d => d.w > 120 ? 1 : 0))
+      .call(s => s.select('text.time.end').attr('opacity', d => d.w > 200 ? 1 : 0).attr('x', d => d.w - 4))
     );
 }
 
@@ -365,6 +383,8 @@ function setupData(now) {
   for (let i = 0; i < l; i++) {
     const employee = employees[i];
     for (let j = 1; j < days.length - 1; j++) { 
+      let cumDuration = 0;
+      let started = false;
       const day = days[j];
 
       const h = Math.floor((6 + (i / l) * 10) * 2) / 2
@@ -372,10 +392,14 @@ function setupData(now) {
       let punch, projectedStart, projectedEnd;
   
       punch = new Date(day);
-      punch.setHours(h);
+      punch.setHours(0, 0, 0, 0);
+      punch = new Date(+punch + +employee.shift.start - +new Date(2000, 0, 1));
       projectedStart = new Date(punch);
   
-      if (punch < now) punches.push(punch);
+      if (punch < now) {
+        started = true;
+        punches.push(punch);
+      }
   
       punch = new Date(punch);
       punch.setHours(punch.getHours() + 4);
@@ -410,12 +434,25 @@ function setupData(now) {
           state = ShiftState.Complete;
         }
         const duration = end - start;
+        cumDuration += duration;
   
-        components.push({type: ShiftComponentType.Actual, state, start, end, duration, employeeId, x: 0, w: 0, fill: d3.color('')});
+        components.push({
+          showTime: true,
+          type: ShiftComponentType.Actual,
+          state,
+          start,
+          end,
+          duration,
+          employeeId,
+          x: 0,
+          w: 0,
+          fill: d3.color(''),
+        });
       }
   
       if (punches.length != 4) {
         components.unshift({
+          showTime: components.length == 0,
           type: ShiftComponentType.Projected,
           start: new Date(punches.length == 3 ? punches[2] : punches.length == 1 ? punches[0] : projectedStart),
           end: projectedEnd,
@@ -433,12 +470,18 @@ function setupData(now) {
         id: `${i}`,
         employee,
         components,
+        started,
         punches: punches.map(date => ({date})),
         start: new Date(punches.length > 0 ? punches[0] : projectedStart),
         end: new Date(punches.length > 0 && punches.length % 2 == 0 ? punches[punches.length - 2] : projectedEnd),
+        duration: cumDuration,
       });
     }
   }
+}
+
+function drawMiniPie() {
+
 }
 
 function byEmployee(employeeId, centerDate: Date) {
