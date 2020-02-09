@@ -121,22 +121,8 @@ let darkMode = false;
 
 svg.append('rect').classed('background', true).attr('height', '100%').attr('width', '100%');
 
-svg.append('g')
-  .classed('button', true)
-  .call(g => g.append('rect')
-    .attr('rx', 8)
-    .attr('width', 240)
-    .attr('height', 32)
-    .attr('fill', 'grey'))
-  .call(g => g.append('text')
-    .attr('text-anchor', 'middle')
-    .attr('alignment-baseline', 'middle')
-    .attr('fill', 'white')
-    .attr('x', 120)
-    .attr('y', 16)
-    .text('Dark Mode')
-  )
-  .attr('transform', `translate(${width - 244},${4})`)
+drawButton('Dark Mode', [120, 36], 'grey')
+  .attr('transform', `translate(${width - 264},${4})`)
   .on('click', function() {
     if (darkMode = !darkMode) {
       d3.select(this)
@@ -150,6 +136,13 @@ svg.append('g')
       svg.classed('dark', false);
     }
   });
+
+drawButton('Reset', [120, 36], 'grey')
+  .attr('transform', `translate(${width - 134},${4})`)
+  .on('click', () => {
+    console.log('click')
+    svg.transition().call(zoom.transform, d3.zoomIdentity);
+  })
 
 
 svg.append('g').classed('axis top', true).call(topAxis);
@@ -194,7 +187,8 @@ function updatePositions(shift: Shift) {
     comp.w = xScale(comp.end) - comp.x;
   }
   shift.y = yScale(shift.employee.id);
-  shift.x = Math.max(xScale(shift.start), 0);
+  const [a, b] = [xScale(shift.start), xScale(shift.end)];
+  shift.x = Math.min(Math.max(a, 0), b);
   return shift;
 }
 
@@ -538,6 +532,25 @@ function drawMiniPie(sel, frac: number, fillA, fillB, radius = 10) {
     );
 }
 
+function drawButton(text: string, [w, h]: [number, number], fill) {
+  return svg.append('g')
+    .classed('button', true)
+    .call(g => g.append('rect')
+      .attr('rx', 8)
+      .attr('width', w)
+      .attr('height', h)
+      .attr('fill', fill))
+    .call(g => g.append('text')
+      .attr('user-select', 'none')
+      .attr('text-anchor', 'middle')
+      .attr('alignment-baseline', 'middle')
+      .attr('fill', 'white')
+      .attr('x', w / 2)
+      .attr('y', h / 2)
+      .text(text)
+    );
+}
+
 function cleanup() {
   svg.select('g.axis.date').remove();
 }
@@ -752,7 +765,7 @@ function getData(now, [minDate, maxDate]): DataSet {
       if (!employeeIds.includes(shift.employee.id)) employeeIds.push(shift.employee.id);
     }
   }
-  return {shifts: filteredShifts, employeeIds};
+  return {shifts: shifts, employeeIds};
 }
 
 setupData(now);
