@@ -403,7 +403,7 @@ function setupData(now, fuzzy = 30) {
       const day = days[j];
 
       const h = Math.floor((6 + (i / l) * 10) * 2) / 2
-      const punches = []
+      const punches: Date[] = []
       let punch, projectedStart, projectedEnd;
   
       punch = new Date(day);
@@ -467,7 +467,7 @@ function setupData(now, fuzzy = 30) {
         } else {
           state = ShiftState.Complete;
         }
-        const duration = end - start;
+        const duration = +end - +start;
         cumDuration += duration;
   
         components.push({
@@ -507,7 +507,7 @@ function setupData(now, fuzzy = 30) {
         started,
         punches: punches.map(date => ({date})),
         start: new Date(punches.length > 0 ? punches[0] : projectedStart),
-        end: new Date(punches.length > 0 && punches.length % 2 == 0 ? punches[punches.length - 2] : projectedEnd),
+        end: new Date((punches.length > 0 && punches.length % 2 == 0) ? punches[punches.length - 1] : projectedEnd),
         duration: cumDuration,
         expectedDuration: employee.shift.duration,
       });
