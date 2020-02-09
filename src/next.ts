@@ -98,7 +98,7 @@ let width, height;
 let xScale = d3.scaleTime();
 let topAxis = d3.axisTop(xScale);
 let bottomAxis = d3.axisBottom(xScale);
-const yScale = d3.scaleBand().padding(0.6);
+const yScale = d3.scaleBand().padding(0.6).align(.6);
 
 const colorScale = d3.scaleOrdinal();
 {
@@ -111,7 +111,9 @@ const colorScale = d3.scaleOrdinal();
   colorScale.domain(pairs.map((_, i) => i.toString())).range(pairs);
 }
 
-const zoom = d3.zoom().on('zoom', zoomed);
+const zoom = d3.zoom()
+  // .scaleExtent([.2, 8])
+  .on('zoom', zoomed);
 
 const margin = {left: 10, right: 10, top: 40, bottom: 40};
 
