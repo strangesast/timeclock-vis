@@ -166,7 +166,7 @@ const g = svg.append('g');
   xScale.domain([start, tomorrow]);
 }
 
-const xScaleCopy = xScale.copy();
+let xScaleCopy = xScale.copy();
 
 svg.call(zoom);
 
@@ -547,8 +547,9 @@ function byEmployee(employeeId, centerDate: Date) {
     if (shift.employee.id == employeeId) {
       filteredShifts.push(shift);
     }
+
   }
-  svg.on('.zoom', null);
+  zoom.on('zoom', zoomed);
 
   const bandwidth = yScale.bandwidth();
 
@@ -564,14 +565,6 @@ function byEmployee(employeeId, centerDate: Date) {
   yScale.domain(days);
 
   // uggggly
-  function normalizeDate(d: Date) {
-    d = new Date(d);
-    d.setFullYear(2000);
-    d.setMonth(0)
-    d.setDate(1);
-    return d;
-  }
-
   const [minDate, maxDate] = d3.extent(filteredShifts
     .reduce((acc, s) => {
       for (const comp of s.components) {
@@ -581,7 +574,9 @@ function byEmployee(employeeId, centerDate: Date) {
       return acc;
     }, [] as Date[])
     .map(normalizeDate));
+
   xScale.domain([minDate, maxDate]);
+  xScaleCopy = xScale.copy();
 
   topAxis.scale(xScale);
   bottomAxis.scale(xScale);
@@ -592,23 +587,7 @@ function byEmployee(employeeId, centerDate: Date) {
     .call(s => s.select('path').remove())
     .call(s => s.selectAll('.tick').select('line').remove());
 
-  function updatePositions(shift: Shift) {
-    for (let i = shift.components.length - 1; i >= 0; i--) {
-      const comp = shift.components[i];
-      let fill;
-      if (comp.type == ShiftComponentType.Projected) {
-        fill = d3.color(colorScale(shift.employee.id)[1]);
-      } else {
-        fill = d3.color(colorScale(shift.employee.id)[0]);
-      }
-      comp.fill = fill;
-      comp.x = xScale(normalizeDate(comp.start));
-      comp.w = xScale(normalizeDate(comp.end)) - comp.x;
-    }
-    shift.y = yScale(shift.start.toISOString().slice(0, 10));
-    shift.x = Math.max(xScale(normalizeDate(shift.start)), 0);
-    return shift;
-  }
+  const t = d3.transition().duration(1000);
 
   g.selectAll<SVGElement, Shift>('g.shift').data(filteredShifts, d => d.id).join(
     enter => enter.append('g').classed('shift', true)
@@ -670,20 +649,35 @@ function byEmployee(employeeId, centerDate: Date) {
             .attr('dur', '1.2s')
             .attr('repeatCount', 'indefinite')
         )
-      ),
-    update => update.call(s => s.select('g.text')
+      )
+      .each(updatePositions)
+      .call(s => s.attr('opacity', 0).transition(t).attr('opacity', 1))
+      .call(s => s.attr('transform', d => `translate(0,${d.y})`)),
+    update => update
+      .call(s => s.select('g.text')
       .call(s => s.select('g.duration')
-        .attr('transform', `translate(${s.select<SVGGraphicsElement>('text.shift-label').node().getBBox().width + 4},0)`))
+        .attr('transform', `translate(${s.select<SVGGraphicsElement>('text.shift-label').node().getBBox().width + 4},0)`)
+      )
+      // .each(function(d) {
+      //   console.log('here');
+      //   updatePositions(d);
+      //   const s = d3.select(this);
+      //   // s.attr('transform', `translate(${0},${y - 40})`).transition(t).attr('transform', `translate(${0},${y})`);
+      //   d3.select(this).attr('transform', `translate(0,${d.y})`);
+      // })
     ),
     exit => exit.remove(),
   )
   .each(updatePositions)
+  .call(s => s.transition(t).attr('transform', d => `translate(0,${d.y})`))
   .call(s => s.select('g.text')
-    .call(s => s.select('text').text(d => formatDate(d.start)))
-    .call(s => s.select('g.duration').attr('transform', `translate(${s.select<SVGGraphicsElement>('text.shift-label').node().getBBox().width + 4},0)`))
+    .each(function (d) {
+      const s = d3.select(this);
+      const text = s.select<SVGGraphicsElement>('text').text(formatDate(d.start));
+      const dx = text.node().getBBox().width + 4;
+      s.select('g.duration').attr('transform', `translate(${dx},0)`);
+    })
   )
-  .attr('transform', d => `translate(${d.x},${d.y})`)
-  .attr('transform', shift => `translate(0,${shift.y})`)
   .call(s => s.select('g.text').attr('transform', d => `translate(${d.x + 4},-20)`))
   .call(s => s.selectAll<SVGElement, ShiftComponent>('g.group')
     .attr('transform', d => `translate(${d.x},0)`)
@@ -695,6 +689,56 @@ function byEmployee(employeeId, centerDate: Date) {
     .call(s => s.select('text.time.start').attr('opacity', d => d.w > 120 ? 1 : 0))
     .call(s => s.select('text.time.end').attr('opacity', d => d.w > 200 ? 1 : 0).attr('x', d => d.w - 4))
   );
+
+  function normalizeDate(d: Date) {
+    d = new Date(d);
+    d.setFullYear(2000);
+    d.setMonth(0)
+    d.setDate(1);
+    return d;
+  }
+
+  function updatePositions(shift: Shift) {
+    for (let i = shift.components.length - 1; i >= 0; i--) {
+      const comp = shift.components[i];
+      let fill;
+      if (comp.type == ShiftComponentType.Projected) {
+        fill = d3.color(colorScale(shift.employee.id)[1]);
+      } else {
+        fill = d3.color(colorScale(shift.employee.id)[0]);
+      }
+      comp.fill = fill;
+      comp.x = xScale(normalizeDate(comp.start));
+      comp.w = xScale(normalizeDate(comp.end)) - comp.x;
+    }
+    shift.y = yScale(shift.start.toISOString().slice(0, 10));
+    shift.x = Math.max(xScale(normalizeDate(shift.start)), 0);
+    return shift;
+  }
+
+  function zoomed() {
+    xScale = d3.event.transform.rescaleX(xScaleCopy);
+    topAxis = topAxis.scale(xScale);
+    bottomAxis = bottomAxis.scale(xScale);
+    drawAxis();
+    
+    g.selectAll<SVGElement, Shift>('g.shift')
+      .each(updatePositions)
+      .attr('transform', shift => `translate(0,${shift.y})`)
+      .call(s => s.select('g.text').attr('transform', d => `translate(${d.x + 4},-20)`))
+      .call(s => s.selectAll<SVGElement, ShiftComponent>('g.group')
+        .attr('transform', d => `translate(${d.x},0)`)
+        .call(s => s.select('rect')
+          .attr('width', d => d.w)
+          .attr('fill', d => d.fill.toString())
+          .attr('stroke', d => d.fill.toString())
+        )
+        .call(s => s.select('text.time.start').attr('opacity', d => d.w > 120 ? 1 : 0))
+        .call(s => s.select('text.time.end').attr('opacity', d => d.w > 200 ? 1 : 0).attr('x', d => d.w - 4))
+      );
+  }
+
+
 }
 
 function getData(now, [minDate, maxDate]): DataSet {
