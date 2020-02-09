@@ -140,8 +140,8 @@ drawButton('Dark Mode', [120, 36], 'grey')
 drawButton('Reset', [120, 36], 'grey')
   .attr('transform', `translate(${width - 134},${4})`)
   .on('click', () => {
-    console.log('click')
-    svg.transition().call(zoom.transform, d3.zoomIdentity);
+    const t = d3.transition().duration(1000);
+    svg.transition(t).call(zoom.transform, d3.zoomIdentity);
   })
 
 
