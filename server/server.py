@@ -32,15 +32,25 @@ async def index(request):
             {'start': {'$lt': minDate}, 'end': {'$gt': maxDate}},
         ]}
 
+    if 'employee' in req_q:
+        try:
+            employee_id = req_q['employee']
+            employee_id = int(employee_id)
+            employee_id = str(employee_id)
+        except ValueError as e:
+            return web.HTTPBadRequest(body='invalid employee id')
+        query['employee'] = employee_id
+
+    print(query)
+
         
     cursor = request.app['db'].timeclock.shifts.find(query, {"_id": 0}).sort('_id', pymongo.ASCENDING)
     shifts = await cursor.to_list(None)
 
-    employee_ids = list(set(s['employee']['id'] for s in shifts))
+    employee_ids = list(set(s['employee'] for s in shifts))
 
     cursor = request.app['db'].timeclock.employees.find({'id': {'$in': employee_ids}}, {"_id": 0})
     employees = await cursor.to_list(None)
-
 
     return json_response({'shifts': shifts, 'employeeIds': employee_ids, 'employees': employees})
     # need encoder

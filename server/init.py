@@ -45,13 +45,13 @@ async def main():
     employees = {}
     async for i, employee in enumerate(wrap_fetchone(cur)):
         color = EmployeeShiftColor(i % len(EmployeeShiftColor))
+        employee['id'] = str(employee['id'])
         employee['Color'] = color
         employees[employee['id']] = employee;
 
     await mongo_client.timeclock.drop_collection('employees')
     #await mongo_client.timeclock.employees.create_index('id', unique=True)
     result = await mongo_client.timeclock.employees.insert_many(employees.values())
-    print(result)
 
     # get list of employees
       # merge into mongo
@@ -73,6 +73,7 @@ async def main():
     last_shift_id = 0
     shifts = []
     async for employeeId, it in groupby(g(), key=lambda d: d['inf_employee_id']):
+        employeeId = str(employeeId)
         employee = employees[employeeId]
         for seq in seq_grouper(grouper(map(lambda d: d and d['Date'], it))):
             components = []
@@ -89,7 +90,7 @@ async def main():
                 components.append(component)
             shift = {
                 'id': str(++last_shift_id),
-                'employee': employee,
+                'employee': employeeId,
                 'components': components,
                 'duration': cum_duration,
                 'started': True if len(components) else False,
