@@ -29,6 +29,10 @@ module.exports = merge(baseConfig, {
          target: 'ws://localhost:8080',
          ws: true
       },
+      '/data': {
+         target: 'http://localhost:8080',
+      },
+
     },
   },
 });

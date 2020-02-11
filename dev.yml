@@ -1,9 +1,21 @@
 version: '3.7'
 services:
-  db:
+  mongodb:
+    image: mongo
+    network_mode: 'host'
+    ports:
+      - 27017:27017
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: password
+    volumes:
+      - ./data:/data/db
+      - ./docker/mongo/init.sh:/docker-entrypoint-initdb.d/init.sh
+  mysqldb:
     image: mariadb
     ports:
       - 3306:3306
+    network_mode: 'host'
     environment:
       - MYSQL_ROOT_PASSWORD=password
       - MYSQL_ROOT_HOST=%

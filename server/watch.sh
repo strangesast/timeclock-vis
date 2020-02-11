@@ -1,1 +1,1 @@
-nodemon --exec ./env/bin/python main.py
+nodemon --exec ./env/bin/python server.py
