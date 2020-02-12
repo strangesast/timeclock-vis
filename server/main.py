@@ -117,10 +117,13 @@ async def check_timeclock(app):
             last_state = state
             for ws in app['websockets']:
                 await ws.send_str(json.dumps(state, default=default))
-            await asyncio.sleep(diff.total_seconds())
+            wait = diff.total_seconds()
+            print(f'waiting for {wait}...')
+            await asyncio.sleep(wait)
 
     except asyncio.CancelledError:
-        pass
+        print('task cancelled')
+
 
     except Exception as e:
         print(e)
