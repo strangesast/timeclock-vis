@@ -1,18 +1,10 @@
 import * as Comlink from 'comlink';
-import { Shift, ShiftState, formatTime, addHours } from './util';
+import { Shift, ShiftState, formatTime, addHours, inFieldOfView } from './util';
 
 async function get(key) {
   const res = await fetch(`data/${key}.json`);
   const json = await res.json();
   return json;
-}
-
-function inFieldOfView([start, end], [fromDate, toDate]): boolean {
-  if (start > fromDate && start < toDate) return true; // start side
-  if (end == null) return true; // in progress
-  if (end > fromDate && end < toDate) return true; // end side
-  if (start < fromDate && end > toDate) return true;
-  return false;
 }
 
 const obj = {
