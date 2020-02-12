@@ -78,11 +78,11 @@ export function addHours(date: Date, hours: number): Date {
 }
 
 export function throttle(fn, cb, delay = 200) {
-  let call, waiting = false, i = 0;
-  return (...args) => {
+  let timeout, waiting = false, i = 0;
+  const func = (...args) => {
     const j = ++i;
-    clearTimeout(call);
-    call = setTimeout(async () => {
+    clearTimeout(timeout);
+    timeout = setTimeout(async () => {
       let res = await fn(...args);
       if (j === i) {
         waiting = false;
@@ -91,14 +91,18 @@ export function throttle(fn, cb, delay = 200) {
     }, waiting === true ? delay : 0);
     waiting = true;
   };
+  func.timeout = timeout;
+  return func;
 }
 
-export function debounce(fn, delay = 1000) {
-  let call;
-  return (...args) => {
-    clearTimeout(call);
-    call = setTimeout(() => fn(...args), delay);
+export function debounce(cb, delay = 1000) {
+  let timeout;
+  const fn = (...args) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => cb(...args), delay);
   };
+  fn.timeout = timeout;
+  return fn;
 }
 
 export function sortBy(keys) {
