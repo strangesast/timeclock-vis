@@ -112,7 +112,7 @@ const colorScale = d3.scaleOrdinal();
 }
 
 const zoom = d3.zoom()
-  // .scaleExtent([.2, 8])
+  .scaleExtent([.4, 8])
   .on('zoom', zoomed);
 
 const margin = {left: 10, right: 10, top: 40, bottom: 40};
@@ -123,28 +123,13 @@ let darkMode = false;
 
 svg.append('rect').classed('background', true).attr('height', '100%').attr('width', '100%');
 
-drawButton('Dark Mode', [120, 36], 'grey')
+drawButton('Dark Mode', [120, 36])
   .attr('transform', `translate(${width - 264},${4})`)
-  .on('click', function() {
-    if (darkMode = !darkMode) {
-      d3.select(this)
-        .call(s => s.select('rect').attr('fill', 'lightgrey'))
-        .call(s => s.select('text').attr('fill', 'black'));
-      svg.classed('dark', true);
-    } else {
-      d3.select(this)
-        .call(s => s.select('rect').attr('fill', 'grey'))
-        .call(s => s.select('text').attr('fill', 'white'));
-      svg.classed('dark', false);
-    }
-  });
+  .on('click', () => svg.classed('dark', darkMode = !darkMode));
 
-drawButton('Reset', [120, 36], 'grey')
+drawButton('Reset', [120, 36])
   .attr('transform', `translate(${width - 134},${4})`)
-  .on('click', () => {
-    const t = d3.transition().duration(1000);
-    svg.transition(t).call(zoom.transform, d3.zoomIdentity);
-  })
+  .on('click', () => svg.transition().duration(1000).call(zoom.transform, d3.zoomIdentity));
 
 
 svg.append('g').classed('axis top', true).call(topAxis);
@@ -238,7 +223,7 @@ function drawAxis() {
     })
 }
 
-function main({employeeIds, shifts}: DataSet) {
+function byTime({employeeIds, shifts}: DataSet) {
   yScale.domain(employeeIds);
   shifts.forEach(updatePositions);
 
@@ -253,7 +238,8 @@ function main({employeeIds, shifts}: DataSet) {
     .join(
       enter => enter.append('g')
         .call(drawShift, bandwidth)
-        .on('click', d => {
+        .on('click', function(d) {
+          d3.select(this).on('click', null); // probs should be in byEmployee
           cleanup();
           byEmployee(d.employee.id, d.start);
         }),
@@ -470,6 +456,7 @@ function drawStrokeAnimation(sel, colors: string[]) {
 function drawShift(sel, bandwidth) {
   return sel
     .classed('shift', true)
+    .attr('cursor', 'pointer')
     // shift label
     .call(s => s.append('g').classed('text', true)
       .call(s => s.append('text')
@@ -534,19 +521,17 @@ function drawMiniPie(sel, frac: number, employeeId: string, radius = 10) {
       .attr('d', d => arc({ startAngle, endAngle, outerRadius: radius, innerRadius: 0 })));
 }
 
-function drawButton(text: string, [w, h]: [number, number], fill) {
+function drawButton(text: string, [w, h]: [number, number]) {
   return svg.append('g')
     .classed('button', true)
     .call(g => g.append('rect')
       .attr('rx', 8)
       .attr('width', w)
-      .attr('height', h)
-      .attr('fill', fill))
+      .attr('height', h))
     .call(g => g.append('text')
       .attr('user-select', 'none')
       .attr('text-anchor', 'middle')
       .attr('alignment-baseline', 'middle')
-      .attr('fill', 'white')
       .attr('x', w / 2)
       .attr('y', h / 2)
       .text(text)
@@ -565,13 +550,19 @@ function byEmployee(employeeId, centerDate: Date) {
     }
 
   }
-  zoom.on('zoom', zoomed);
 
   const bandwidth = yScale.bandwidth();
 
   let minDate = d3.timeWeek.floor(centerDate);
   let maxDate = d3.timeWeek.offset(minDate, 1);
   yScale.domain(d3.timeDay.range(minDate, maxDate).map(d => d.toISOString().slice(0, 10)));
+
+  const [minx, maxx] = xScale.range();
+  const extent: [[number, number], [number,number]] = [
+    [minx, -Infinity],
+    [maxx, Infinity]
+  ];
+  zoom.translateExtent(extent).scaleExtent([1, 10]).on('zoom', zoomed);
 
   // query db with employee, min/max date
 
@@ -609,7 +600,7 @@ function byEmployee(employeeId, centerDate: Date) {
           .attr('opacity', 0)
           .attr('transform', `translate(0,${d.y - 40})`)
           .transition(t)
-          .delay(500)
+          .delay(200)
           .attr('opacity', 1)
           .attr('transform', `translate(0,${d.y})`);
       })
@@ -715,7 +706,7 @@ setupData(now);
 
 {
   const [minDate, maxDate] = xScale.domain();
-  main(getData(now, [minDate, maxDate]));
+  byTime(getData(now, [minDate, maxDate]));
 }
 
 // lazy, not right yet
