@@ -262,15 +262,14 @@ function main({employeeIds, shifts}: DataSet) {
           )
           .filter(d => d.started)
           .call(s => s.append('g').classed('duration', true)
-            .attr('transform', `translate(${s.select<SVGGraphicsElement>('text.shift-label').node().getBBox().width + 4},0)`)
             .each(function (d) {
-              const s = d3.select(this);
-              const c = colorScale(d.employee.id);
-              return drawMiniPie(
-                s,
+              const dx = (this.previousSibling as SVGGraphicsElement).getBBox().width + 4;
+              d3.select(this)
+                 .attr('transform', `translate(${dx},0)`)
+                .call(
+                drawMiniPie,
                 d.duration / d.expectedDuration,
-                c[0],
-                c[1],
+                d.employee.id,
               );
             })
             .call(s => s.append('text')
@@ -517,21 +516,16 @@ function setupData(now, fuzzy = 30) {
   }
 }
 
-const arc = d3.arc().outerRadius(10);
-function drawMiniPie(sel, frac: number, fillA, fillB, radius = 10) {
-  frac = Math.min(Math.max(frac, 0), 1);
+const arc = d3.arc();
+function drawMiniPie(sel, frac: number, employeeId: string, radius = 10) {
+  const c = colorScale(employeeId);
+  const endAngle = 2 * Math.PI * Math.min(Math.max(frac, 0), 1);
+  const startAngle = 0;
   return sel.append('g')
     .attr('transform', `translate(${radius},${radius/2})`)
-    .call(s => s.append('circle').attr('r', 10).attr('fill', fillB))
-    .call(s => s.append('path')
-      .attr('fill', fillA)
-      .attr('d', d => arc({
-        startAngle: 0,
-        endAngle: 2 * Math.PI * frac,
-        outerRadius: radius,
-        innerRadius: 0,
-      }))
-    );
+    .call(s => s.append('circle').attr('r', 10).attr('fill', c[1]))
+    .call(s => s.append('path').attr('fill', c[0])
+      .attr('d', d => arc({ startAngle, endAngle, outerRadius: radius, innerRadius: 0 })));
 }
 
 function drawButton(text: string, [w, h]: [number, number], fill) {
@@ -556,6 +550,7 @@ function drawButton(text: string, [w, h]: [number, number], fill) {
 function cleanup() {
   svg.select('g.axis.date').remove();
 }
+
 function byEmployee(employeeId, centerDate: Date) {
   const filteredShifts: Shift[] = [];
   for (const shift of shifts) {
@@ -568,19 +563,14 @@ function byEmployee(employeeId, centerDate: Date) {
 
   const bandwidth = yScale.bandwidth();
 
-  const sun = new Date(centerDate);
-  sun.setDate(sun.getDate() - sun.getDay());
-  const days: string[] = [];
-  let date = new Date(sun);
-  for (let i = 0; i < 7; i++) {
-    days.push(date.toISOString().slice(0, 10));
-    date = new Date(date);
-    date.setDate(date.getDate() + 1);
-  }
-  yScale.domain(days);
+  let minDate = d3.timeWeek.floor(centerDate);
+  let maxDate = d3.timeWeek.offset(minDate, 1);
+  yScale.domain(d3.timeDay.range(minDate, maxDate).map(d => d.toISOString().slice(0, 10)));
+
+  // query db with employee, min/max date
 
   // uggggly
-  const [minDate, maxDate] = d3.extent(filteredShifts
+  ([minDate, maxDate] = d3.extent(filteredShifts
     .reduce((acc, s) => {
       for (const comp of s.components) {
         acc.push(comp.start);
@@ -588,7 +578,7 @@ function byEmployee(employeeId, centerDate: Date) {
       }
       return acc;
     }, [] as Date[])
-    .map(normalizeDate));
+    .map(normalizeDate)));
 
   xScale.domain([minDate, maxDate]);
   xScaleCopy = xScale.copy();
@@ -616,13 +606,10 @@ function byEmployee(employeeId, centerDate: Date) {
         .filter(d => d.started)
         .call(s => s.append('g').classed('duration', true)
           .each(function (d) {
-            const s = d3.select(this);
-            const c = colorScale(d.employee.id);
-            return drawMiniPie(
-              s,
+            d3.select(this).call(
+              drawMiniPie,
               d.duration / d.expectedDuration,
-              c[0],
-              c[1],
+              d.employee.id,
             );
           })
           .call(s => s.append('text')
