@@ -250,24 +250,72 @@ function byTime([minDate, maxDate]) {
 
   drawAxis();
 
+  const t = d3.transition().duration(500);
+
   svg.select('g.shifts').selectAll<SVGElement, Shift>('g.shift').data(filteredShifts, d => d.id)
     .join(
-      enter => enter.append('g').call(drawShift, bandwidth),
-      update => update.call(s => s.select('g.text').select('text').text(d => d.employee.name)),
-      exit => exit.remove(),
+      enter => enter.append('g')
+        .call(drawShift, bandwidth)
+        .call(s => s.select('g.text').attr('transform', d => `translate(${d.x+4},-20)`))
+        .each(function (d) {
+          d3.select(this)
+            .attr('opacity', 0)
+            .attr('transform', `translate(0,${d.y + 40})`)
+            .transition(t)
+            .delay(200)
+            .attr('opacity', 1)
+            .attr('transform', `translate(0,${d.y})`)
+        })
+        .call(s => s.selectAll<SVGElement, ShiftComponent>('g.group')
+        .attr('transform', d => `translate(${d.x},0)`)
+        .call(s => s.select('rect')
+          .attr('width', d => d.w)
+          .attr('fill', d => d.fill.toString())
+          .attr('stroke', d => d.fill.toString())
+        )
+        .call(s => s.select('text.time.start').attr('opacity', d => d.w > 120 ? 1 : 0))
+        .call(s => s.select('text.time.end').attr('opacity', d => d.w > 200 ? 1 : 0).attr('x', d => d.w - 4))),
+      update => update
+        .call(s => s.transition(t).delay(100)
+          .call(s => s.select('g.text')
+            .each(function (d) {
+              const s = d3.select(this);
+              const text = s.select<SVGGraphicsElement>('text')
+                .text((d: any) => d.employee.name);
+              const dx = text.node().getBBox().width + 4;
+              s.select('g.duration').attr('transform', `translate(${dx},0)`);
+            })
+          )
+          .call(s => s.select('g.text').attr('transform', (d: any) => `translate(${d.x+4},-20)`))
+          .attr('transform', d => `translate(0,${d.y})`)
+          .selectAll<SVGElement, ShiftComponent>('g.group')
+          .attr('transform', d => `translate(${d.x},0)`)
+          .call(s => s.select('rect')
+            .attr('width', d => d.w)
+            .attr('fill', d => d.fill.toString())
+            .attr('stroke', d => d.fill.toString())
+          )
+          .call(s => s.select('text.time.start')
+            .attr('opacity', d => d.w > 120 ? 1 : 0))
+          .call(s => s.select('text.time.end')
+            .attr('opacity', d => d.w > 200 ? 1 : 0)
+            .attr('x', d => d.w - 4))
+        ),
+      exit => exit.attr('opacity', 1).transition(t).attr('opacity', 0).remove(),
     )
-    .attr('transform', shift => `translate(0,${shift.y})`)
-    .call(s => s.select('g.text').attr('transform', d => `translate(${d.x+4},-20)`))
-    .call(s => s.selectAll<SVGElement, ShiftComponent>('g.group')
-      .attr('transform', d => `translate(${d.x},0)`)
-      .call(s => s.select('rect')
-        .attr('width', d => d.w)
-        .attr('fill', d => d.fill.toString())
-        .attr('stroke', d => d.fill.toString())
-      )
-      .call(s => s.select('text.time.start').attr('opacity', d => d.w > 120 ? 1 : 0))
-      .call(s => s.select('text.time.end').attr('opacity', d => d.w > 200 ? 1 : 0).attr('x', d => d.w - 4))
-    ).on('click', function(d) {
+    // .attr('transform', shift => `translate(0,${shift.y})`)
+    // .call(s => s.select('g.text').attr('transform', d => `translate(${d.x+4},-20)`))
+    // .call(s => s.selectAll<SVGElement, ShiftComponent>('g.group')
+    //   .attr('transform', d => `translate(${d.x},0)`)
+    //   .call(s => s.select('rect')
+    //     .attr('width', d => d.w)
+    //     .attr('fill', d => d.fill.toString())
+    //     .attr('stroke', d => d.fill.toString())
+    //   )
+    //   .call(s => s.select('text.time.start').attr('opacity', d => d.w > 120 ? 1 : 0))
+    //   .call(s => s.select('text.time.end').attr('opacity', d => d.w > 200 ? 1 : 0).attr('x', d => d.w - 4))
+    // )
+    .on('click', function(d) {
       d3.select(this).on('click', null); // probs should be in byEmployee
       cleanup();
       byEmployee(d.employee.id, d.start);
@@ -650,13 +698,19 @@ function byEmployee(employeeId, centerDate: Date) {
           })
         )
         .call(s => s.select('g.text').attr('transform', d => `translate(${d.x+4},-20)`))
-        .attr('transform', d => `translate(0,${d.y})`).selectAll<SVGElement, ShiftComponent>('g.group')
+        .attr('transform', d => `translate(0,${d.y})`)
+        .selectAll<SVGElement, ShiftComponent>('g.group')
         .attr('transform', d => `translate(${d.x},0)`)
         .call(s => s.select('rect')
           .attr('width', d => d.w)
           .attr('fill', d => d.fill.toString())
           .attr('stroke', d => d.fill.toString())
         )
+        .call(s => s.select('text.time.start')
+          .attr('opacity', d => d.w > 120 ? 1 : 0))
+        .call(s => s.select('text.time.end')
+          .attr('opacity', d => d.w > 200 ? 1 : 0)
+          .attr('x', d => d.w - 4))
       ),
     exit => exit.attr('opacity', 1).transition(t).attr('opacity', 0).remove(),
   ).on('click', function (d) {
@@ -704,8 +758,11 @@ function byEmployee(employeeId, centerDate: Date) {
           .attr('fill', d => d.fill.toString())
           .attr('stroke', d => d.fill.toString())
         )
-        .call(s => s.select('text.time.start').attr('opacity', d => d.w > 120 ? 1 : 0))
-        .call(s => s.select('text.time.end').attr('opacity', d => d.w > 200 ? 1 : 0).attr('x', d => d.w - 4))
+        .call(s => s.select('text.time.start')
+          .attr('opacity', d => d.w > 120 ? 1 : 0))
+        .call(s => s.select('text.time.end')
+          .attr('opacity', d => d.w > 200 ? 1 : 0)
+          .attr('x', d => d.w - 4))
       );
   }
 }
