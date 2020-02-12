@@ -98,7 +98,11 @@ let width, height;
 let xScale = d3.scaleTime();
 let topAxis = d3.axisTop(xScale);
 let bottomAxis = d3.axisBottom(xScale);
-const yScale = d3.scaleBand().padding(0.6).align(.6);
+
+const yScale = d3.scaleOrdinal<number>();
+const bandwidth = 30;
+const step = 64;
+
 
 const colorScale = d3.scaleOrdinal();
 {
@@ -112,10 +116,10 @@ const colorScale = d3.scaleOrdinal();
 }
 
 const zoom = d3.zoom()
-  .scaleExtent([.4, 8])
+  .scaleExtent([.4, 20])
   .on('zoom', zoomed);
 
-const margin = {left: 10, right: 10, top: 40, bottom: 40};
+const margin = {left: 10, right: 10, top: 80, bottom: 40};
 
 size();
 
@@ -136,7 +140,7 @@ svg.append('g').classed('axis top', true).call(topAxis);
 svg.append('g').classed('axis bottom', true).call(bottomAxis);
 svg.append('g').classed('axis date', true);
 
-svg.append('g').classed('shifts', true);
+svg.append('g').classed('shifts', true).attr('transform', `translate(0,${margin.top})`);
   
 {
   const tomorrow = new Date(today);
@@ -155,7 +159,6 @@ function size() {
   xScale.range([margin.left, width - margin.right]);
   topAxis.scale(xScale);
   bottomAxis.scale(xScale);
-  yScale.range([40, height - 40]);
 }
 
 function updatePositions(shift: Shift) {
@@ -173,7 +176,7 @@ function updatePositions(shift: Shift) {
     comp.x = x;
     comp.w = xScale(comp.end) - comp.x;
   }
-  shift.y = yScale(shift.employee.id);
+  shift.y = yScale(shift.employee.id) * step;
   const [a, b] = [xScale(shift.start), xScale(shift.end)];
   shift.x = Math.min(Math.max(a, 0), b);
   return shift;
@@ -182,8 +185,8 @@ function updatePositions(shift: Shift) {
 function drawAxis() {
   svg.select('g.axis.top').attr('transform', `translate(0,${60})`).call(topAxis)
     .call(s => s.select('path').remove())
-    .call(s => s.selectAll('.tick').select('line').attr('y2', height - 60 - 40));
-  svg.select('g.axis.bottom').attr('transform', `translate(0,${height - 40})`).call(bottomAxis)
+    .call(s => s.selectAll('.tick').select('line').attr('y2', height - margin.top + 20 - margin.bottom));
+  svg.select('g.axis.bottom').attr('transform', `translate(0,${height - margin.bottom})`).call(bottomAxis)
     .call(s => s.select('path').remove())
     .call(s => s.selectAll('.tick').select('line').remove());
 
@@ -224,15 +227,10 @@ function drawAxis() {
 }
 
 function byTime({employeeIds, shifts}: DataSet) {
-  yScale.domain(employeeIds);
+  yScale.domain(employeeIds).range(Array.from(Array(employeeIds.length)).map((_, i) => i));
   shifts.forEach(updatePositions);
 
-  // colorScale.domain(employeeIds);
-  // colorScale.range(d3.schemePaired.filter((_, i) => i % 2));
-
   drawAxis();
-
-  const bandwidth = yScale.bandwidth();
 
   svg.select('g.shifts').selectAll<SVGElement, Shift>('g.shift').data(shifts, d => d.id)
     .join(
@@ -551,18 +549,19 @@ function byEmployee(employeeId, centerDate: Date) {
 
   }
 
-  const bandwidth = yScale.bandwidth();
-
   let minDate = d3.timeWeek.floor(centerDate);
   let maxDate = d3.timeWeek.offset(minDate, 1);
-  yScale.domain(d3.timeDay.range(minDate, maxDate).map(d => d.toISOString().slice(0, 10)));
+
+  const domain = d3.timeDay.range(minDate, maxDate).map(d => d.toISOString().slice(0, 10));
+  const j = domain.indexOf(centerDate.toISOString().slice(0, 10));
+  yScale.domain(domain).range(Array.from(Array(domain.length)).map((_, i) => i - j));
 
   const [minx, maxx] = xScale.range();
   const extent: [[number, number], [number,number]] = [
     [minx, -Infinity],
     [maxx, Infinity]
   ];
-  zoom.translateExtent(extent).scaleExtent([1, 10]).on('zoom', zoomed);
+  zoom.translateExtent(extent).scaleExtent([1, 20]).on('zoom', zoomed);
 
   // query db with employee, min/max date
 
@@ -660,7 +659,8 @@ function byEmployee(employeeId, centerDate: Date) {
       comp.x = xScale(normalizeDate(comp.start));
       comp.w = xScale(normalizeDate(comp.end)) - comp.x;
     }
-    shift.y = yScale(shift.start.toISOString().slice(0, 10));
+    const dy = (yScale(shift.start.toISOString().slice(0, 10)) - 1) * step;
+    shift.y = dy + (height - margin.bottom) / 2;
     shift.x = Math.max(xScale(normalizeDate(shift.start)), 0);
     return shift;
   }
@@ -671,7 +671,10 @@ function byEmployee(employeeId, centerDate: Date) {
     bottomAxis = bottomAxis.scale(xScale);
     drawAxis();
     
-    svg.select('g.shifts').selectAll<SVGElement, Shift>('g.shift')
+    const t = d3.zoomIdentity.translate(0, d3.event.transform.y).scale(d3.event.transform.k);
+    svg.select('g.shifts')
+      // .attr('transform', `translate(0,${t.y})`) // works panning, zoom fucked
+      .selectAll<SVGElement, Shift>('g.shift')
       .each(updatePositions)
       .attr('transform', shift => `translate(0,${shift.y})`)
       .call(s => s.select('g.text').attr('transform', d => `translate(${d.x + 4},-20)`))
