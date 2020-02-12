@@ -151,7 +151,7 @@ svg.append('g').classed('axis top', true).call(topAxis);
 svg.append('g').classed('axis bottom', true).call(bottomAxis);
 svg.append('g').classed('axis date', true);
 
-const g = svg.append('g');
+svg.append('g').classed('shifts', true);
   
 {
   const tomorrow = new Date(today);
@@ -249,69 +249,10 @@ function main({employeeIds, shifts}: DataSet) {
 
   const bandwidth = yScale.bandwidth();
 
-  g.selectAll<SVGElement, Shift>('g.shift').data(shifts, d => d.id)
+  svg.select('g.shifts').selectAll<SVGElement, Shift>('g.shift').data(shifts, d => d.id)
     .join(
-      enter => enter.append('g').classed('shift', true)
-        .call(s => s.append('g').classed('text', true)
-          .call(s => s.append('text')
-            .classed('shift-label', true)
-            .attr('y', 10)
-            .attr('text-anchor', 'start')
-            .attr('alignment-baseline', 'bottom')
-            .text(d => d.employee.name)
-          )
-          .filter(d => d.started)
-          .call(s => s.append('g').classed('duration', true)
-            .each(function (d) {
-              const dx = (this.previousSibling as SVGGraphicsElement).getBBox().width + 4;
-              d3.select(this)
-                 .attr('transform', `translate(${dx},0)`)
-                .call(
-                drawMiniPie,
-                d.duration / d.expectedDuration,
-                d.employee.id,
-              );
-            })
-            .call(s => s.append('text')
-              .attr('x', 24)
-              .attr('y', 10)
-              .attr('alignment-baseline', 'bottom')
-              .text(d => `${formatDuration(d.duration)}`)
-            ),
-          )
-        )
-        .call(s => s.selectAll('g.group').data(d => d.components).enter().append('g').classed('group', true)
-          .call(e => e.append('rect').attr('stroke-width', 4).attr('height', bandwidth).attr('rx', 8))
-          .call(s => s.filter(d => d.showTime)
-            .call(e => e.append('text')
-              .classed('time start', true)
-              .attr('alignment-baseline', 'middle')
-              .attr('x', 4)
-              .attr('y', bandwidth / 2)
-              .text(d => formatTime(d.start))
-            )
-            .call(e => e.append('text')
-              .classed('time end', true)
-              .attr('text-anchor', 'end')
-              .attr('alignment-baseline', 'middle')
-              .attr('y', bandwidth / 2)
-              .text(d => formatTime(d.end))
-            )
-          )
-          .call(s =>
-            s.filter(d => d.type == ShiftComponentType.Actual && d.state == ShiftState.Incomplete)
-              .select('rect')
-              .append('animate')
-              .attr('attributeType', 'XML')
-              .attr('attributeName', 'stroke')
-              .attr('values', d => {
-                const h = d.fill.hex();
-                return `${h};#fff;${h}`;
-              })
-              .attr('dur', '1.2s')
-              .attr('repeatCount', 'indefinite')
-          )
-        )
+      enter => enter.append('g')
+        .call(drawShift, bandwidth)
         .on('click', d => {
           cleanup();
           byEmployee(d.employee.id, d.start);
@@ -341,7 +282,7 @@ function zoomed() {
   bottomAxis = bottomAxis.scale(xScale);
   drawAxis();
   
-  g.selectAll<SVGElement, Shift>('g.shift')
+  svg.select('g.shifts').selectAll<SVGElement, Shift>('g.shift')
     .each(updatePositions)
     .attr('transform', shift => `translate(0,${shift.y})`)
     .call(s => s.select('g.text').attr('transform', d => `translate(${d.x + 4},-20)`))
@@ -516,6 +457,71 @@ function setupData(now, fuzzy = 30) {
   }
 }
 
+function drawStrokeAnimation(sel, colors: string[]) {
+  const values = [...colors, colors[0]].join(';');
+  return sel.append('animate')
+    .attr('attributeType', 'XML')
+    .attr('attributeName', 'stroke')
+    .attr('values', values)
+    .attr('dur', '1.2s')
+    .attr('repeatCount', 'indefinite');
+}
+
+function drawShift(sel, bandwidth) {
+  return sel
+    .classed('shift', true)
+    // shift label
+    .call(s => s.append('g').classed('text', true)
+      .call(s => s.append('text')
+        .classed('shift-label', true)
+        .attr('y', 10)
+        .attr('text-anchor', 'start')
+        .attr('alignment-baseline', 'bottom')
+        .text(d => d.employee.name)
+      )
+      .filter(d => d.started)
+      .call(s => s.append('g').classed('duration', true)
+        .each(function (d) {
+          const dx = (this.previousSibling as SVGGraphicsElement).getBBox().width + 4;
+          d3.select(this)
+            .attr('transform', `translate(${dx},0)`)
+            .call(drawMiniPie, d.duration / d.expectedDuration, d.employee.id);
+        })
+        .call(s => s.append('text')
+          .attr('x', 24)
+          .attr('y', 10)
+          .attr('alignment-baseline', 'bottom')
+          .text(d => `${formatDuration(d.duration)}`)
+        ),
+      )
+    )
+    // shift components
+    .call(s => s.selectAll('g.group').data(d => d.components).enter().append('g').classed('group', true)
+      .call(s => s.append('rect').attr('stroke-width', 4).attr('height', bandwidth).attr('rx', 8))
+      .call(s => s.filter(d => d.showTime)
+        .call(e => e.append('text')
+          .classed('time start', true)
+          .attr('alignment-baseline', 'middle')
+          .attr('x', 4)
+          .attr('y', bandwidth / 2)
+          .text(d => formatTime(d.start))
+        )
+        .call(e => e.append('text')
+          .classed('time end', true)
+          .attr('text-anchor', 'end')
+          .attr('alignment-baseline', 'middle')
+          .attr('y', bandwidth / 2)
+          .text(d => formatTime(d.end))
+        )
+      )
+      .each(function (d) {
+        if (d.type == ShiftComponentType.Actual && d.state == ShiftState.Incomplete) {
+          d3.select(this).select('rect').call(drawStrokeAnimation, [d.fill.hex(), '#fff']);
+        }
+      })
+    );
+}
+
 const arc = d3.arc();
 function drawMiniPie(sel, frac: number, employeeId: string, radius = 10) {
   const c = colorScale(employeeId);
@@ -592,104 +598,61 @@ function byEmployee(employeeId, centerDate: Date) {
     .call(s => s.select('path').remove())
     .call(s => s.selectAll('.tick').select('line').remove());
 
-  const t = d3.transition().duration(1000);
+  const t = d3.transition().duration(500);
 
-  g.selectAll<SVGElement, Shift>('g.shift').data(filteredShifts, d => d.id).join(
-    enter => enter.append('g').classed('shift', true)
-      .call(s => s.append('g').classed('text', true)
-        .call(s => s.append('text')
-          .classed('shift-label', true)
-          .attr('y', 10)
-          .attr('text-anchor', 'start')
-          .attr('alignment-baseline', 'bottom')
-        )
-        .filter(d => d.started)
-        .call(s => s.append('g').classed('duration', true)
-          .each(function (d) {
-            d3.select(this).call(
-              drawMiniPie,
-              d.duration / d.expectedDuration,
-              d.employee.id,
-            );
-          })
-          .call(s => s.append('text')
-            .attr('x', 24)
-            .attr('y', 10)
-            .attr('alignment-baseline', 'bottom')
-            .text(d => `${formatDuration(d.duration)}`)
-          ),
-        ),
-      )
-      .call(s => s.selectAll('g.group').data(d => d.components).enter().append('g').classed('group', true)
-        .call(e => e.append('rect').attr('stroke-width', 4).attr('height', bandwidth).attr('rx', 8))
-        .call(s => s.filter(d => d.showTime)
-          .call(e => e.append('text')
-            .classed('time start', true)
-            .attr('alignment-baseline', 'middle')
-            .attr('x', 4)
-            .attr('y', bandwidth / 2)
-            .text(d => formatTime(d.start))
-          )
-          .call(e => e.append('text')
-            .classed('time end', true)
-            .attr('text-anchor', 'end')
-            .attr('alignment-baseline', 'middle')
-            .attr('y', bandwidth / 2)
-            .text(d => formatTime(d.end))
-          )
-        )
-        .call(s =>
-          s.filter(d => d.type == ShiftComponentType.Actual && d.state == ShiftState.Incomplete)
-            .select('rect')
-            .append('animate')
-            .attr('attributeType', 'XML')
-            .attr('attributeName', 'stroke')
-            .attr('values', d => {
-              const h = d.fill.hex();
-              return `${h};#fff;${h}`;
-            })
-            .attr('dur', '1.2s')
-            .attr('repeatCount', 'indefinite')
-        )
-      )
+  svg.select('g.shifts').selectAll<SVGElement, Shift>('g.shift').data(filteredShifts, d => d.id).join(
+    enter => enter.append('g')
+      .call(drawShift, bandwidth)
       .each(updatePositions)
-      .call(s => s.attr('opacity', 0).transition(t).attr('opacity', 1))
-      .call(s => s.attr('transform', d => `translate(0,${d.y})`)),
-    update => update
+      .each(function (d) {
+        d3.select(this)
+          .attr('opacity', 0)
+          .attr('transform', `translate(0,${d.y - 40})`)
+          .transition(t)
+          .delay(500)
+          .attr('opacity', 1)
+          .attr('transform', `translate(0,${d.y})`);
+      })
       .call(s => s.select('g.text')
-      .call(s => s.select('g.duration')
-        .attr('transform', `translate(${s.select<SVGGraphicsElement>('text.shift-label').node().getBBox().width + 4},0)`)
+        .each(function (d) {
+          const s = d3.select(this);
+          const text = s.select<SVGGraphicsElement>('text').text(formatDate(d.start));
+          const dx = text.node().getBBox().width + 4;
+          s.select('g.duration').attr('transform', `translate(${dx},0)`);
+        })
       )
-      // .each(function(d) {
-      //   console.log('here');
-      //   updatePositions(d);
-      //   const s = d3.select(this);
-      //   // s.attr('transform', `translate(${0},${y - 40})`).transition(t).attr('transform', `translate(${0},${y})`);
-      //   d3.select(this).attr('transform', `translate(0,${d.y})`);
-      // })
-    ),
-    exit => exit.remove(),
-  )
-  .each(updatePositions)
-  .call(s => s.transition(t).attr('transform', d => `translate(0,${d.y})`))
-  .call(s => s.select('g.text')
-    .each(function (d) {
-      const s = d3.select(this);
-      const text = s.select<SVGGraphicsElement>('text').text(formatDate(d.start));
-      const dx = text.node().getBBox().width + 4;
-      s.select('g.duration').attr('transform', `translate(${dx},0)`);
-    })
-  )
-  .call(s => s.select('g.text').attr('transform', d => `translate(${d.x + 4},-20)`))
-  .call(s => s.selectAll<SVGElement, ShiftComponent>('g.group')
-    .attr('transform', d => `translate(${d.x},0)`)
-    .call(s => s.select('rect')
-      .attr('width', d => d.w)
-      .attr('fill', d => d.fill.toString())
-      .attr('stroke', d => d.fill.toString())
-    )
-    .call(s => s.select('text.time.start').attr('opacity', d => d.w > 120 ? 1 : 0))
-    .call(s => s.select('text.time.end').attr('opacity', d => d.w > 200 ? 1 : 0).attr('x', d => d.w - 4))
+      .call(s => s.select('g.text').attr('transform', d => `translate(${d.x + 4},-20)`))
+      .call(s => s.selectAll<SVGElement, ShiftComponent>('g.group')
+        .attr('transform', d => `translate(${d.x},0)`)
+        .call(s => s.select('rect')
+          .attr('width', d => d.w)
+          .attr('fill', d => d.fill.toString())
+          .attr('stroke', d => d.fill.toString())
+        )
+        .call(s => s.select('text.time.start').attr('opacity', d => d.w > 120 ? 1 : 0))
+        .call(s => s.select('text.time.end').attr('opacity', d => d.w > 200 ? 1 : 0).attr('x', d => d.w - 4))
+      ),
+    update => update
+      .each(updatePositions)
+      .call(s => s.transition(t).delay(100)
+        .call(s => s.select('g.text')
+          .each(function (d) {
+            const s = d3.select(this);
+            const text = s.select<SVGGraphicsElement>('text').text(formatDate(d.start));
+            const dx = text.node().getBBox().width + 4;
+            s.select('g.duration').attr('transform', `translate(${dx},0)`);
+          })
+        )
+        .call(s => s.select('g.text').attr('transform', d => `translate(${d.x+4},-20)`))
+        .attr('transform', d => `translate(0,${d.y})`).selectAll<SVGElement, ShiftComponent>('g.group')
+        .attr('transform', d => `translate(${d.x},0)`)
+        .call(s => s.select('rect')
+          .attr('width', d => d.w)
+          .attr('fill', d => d.fill.toString())
+          .attr('stroke', d => d.fill.toString())
+        )
+      ),
+    exit => exit.attr('opacity', 1).transition(t).attr('opacity', 0).remove(),
   );
 
   function normalizeDate(d: Date) {
@@ -701,15 +664,8 @@ function byEmployee(employeeId, centerDate: Date) {
   }
 
   function updatePositions(shift: Shift) {
-    for (let i = shift.components.length - 1; i >= 0; i--) {
-      const comp = shift.components[i];
-      let fill;
-      if (comp.type == ShiftComponentType.Projected) {
-        fill = d3.color(colorScale(shift.employee.id)[1]);
-      } else {
-        fill = d3.color(colorScale(shift.employee.id)[0]);
-      }
-      comp.fill = fill;
+    for (const comp of shift.components) {
+      comp.fill = d3.color(colorScale(shift.employee.id)[comp.type == ShiftComponentType.Projected ? 1 : 0]);
       comp.x = xScale(normalizeDate(comp.start));
       comp.w = xScale(normalizeDate(comp.end)) - comp.x;
     }
@@ -724,7 +680,7 @@ function byEmployee(employeeId, centerDate: Date) {
     bottomAxis = bottomAxis.scale(xScale);
     drawAxis();
     
-    g.selectAll<SVGElement, Shift>('g.shift')
+    svg.select('g.shifts').selectAll<SVGElement, Shift>('g.shift')
       .each(updatePositions)
       .attr('transform', shift => `translate(0,${shift.y})`)
       .call(s => s.select('g.text').attr('transform', d => `translate(${d.x + 4},-20)`))
@@ -739,8 +695,6 @@ function byEmployee(employeeId, centerDate: Date) {
         .call(s => s.select('text.time.end').attr('opacity', d => d.w > 200 ? 1 : 0).attr('x', d => d.w - 4))
       );
   }
-
-
 }
 
 function getData(now, [minDate, maxDate]): DataSet {
@@ -754,7 +708,7 @@ function getData(now, [minDate, maxDate]): DataSet {
       if (!employeeIds.includes(shift.employee.id)) employeeIds.push(shift.employee.id);
     }
   }
-  return {shifts: shifts, employeeIds};
+  return {shifts: filteredShifts, employeeIds};
 }
 
 setupData(now);
