@@ -118,7 +118,7 @@ const colorScale = d3.scaleOrdinal();
   colorScale.domain(pairs.map((_, i) => i.toString())).range(pairs);
 }
 
-const zoom = d3.zoom()
+let zoom;
 const margin = {left: 10, right: 10, top: 80, bottom: 40};
 
 size();
@@ -151,7 +151,6 @@ svg.append('g').classed('shifts', true).attr('transform', `translate(0,${margin.
 
 let xScaleCopy, yScaleCopy;
 
-svg.call(zoom);
 
 function size() {
   ({ width, height } = svg.node().getBoundingClientRect());
@@ -221,9 +220,10 @@ function byTime([minDate, maxDate]) {
   }
 
   // setup
-  zoom.translateExtent(defaultExtent)
+  svg.call(zoom = d3.zoom()
+    .translateExtent(defaultExtent)
     .scaleExtent([.4, 100])
-    .on('zoom', zoomed);
+    .on('zoom', zoomed));
   xScale.domain([minDate, maxDate]);
   xScaleCopy = xScale.copy();
   yScale = d3.scaleOrdinal<number>();
@@ -635,7 +635,13 @@ function byEmployee(employeeId, centerDate: Date, first = false, animate = false
     [minx, -Infinity],
     [maxx, Infinity]
   ];
-  zoom.translateExtent(extent).scaleExtent([1, 100]).on('zoom', zoomed);
+
+  svg.call(zoom = d3.zoom()
+    .translateExtent(extent)
+    .scaleExtent([1, 100])
+    .on('start', zoomStarted)
+    .on('end', zoomEnded)
+    .on('zoom', zoomed));
 
   // query db with employee, min/max date
 
@@ -759,24 +765,35 @@ function byEmployee(employeeId, centerDate: Date, first = false, animate = false
     return shift;
   }
 
+  let lastOffsetY = 0, currentOffset = 0, transform = d3.zoomIdentity;
+  function zoomStarted() {
+    const { sourceEvent: {offsetY} } = d3.event;
+    lastOffsetY = offsetY;
+  }
+
+  function zoomEnded() {
+    currentOffset = transform.y;
+  }
+
   function zoomed() {
+
     xScale = d3.event.transform.rescaleX(xScaleCopy);
 
-    // TODO: fix this shit
-    const {transform: {y, x, k}, sourceEvent} = d3.event;
-    const transform = d3.zoomIdentity.translate(0, y);
-    // yScale = transform.rescaleY(yScaleCopy);
+    // manually compute the drag distance and create zoom transform
+    const { sourceEvent: { offsetY }} = d3.event;
+    transform = d3.zoomIdentity.translate(0, offsetY - lastOffsetY + currentOffset);
+    yScale = transform.rescaleY(yScaleCopy);
 
     topAxis = topAxis.scale(xScale);
     bottomAxis = bottomAxis.scale(xScale);
     drawAxis();
     
     const t = d3.zoomIdentity.translate(0, d3.event.transform.y).scale(d3.event.transform.k);
+
     svg.select('g.shifts')
-      // .attr('transform', `translate(0,${t.y})`) // works panning, zoom fucked
       .selectAll<SVGElement, Shift>('g.shift')
       .each(updatePositions)
-      .attr('transform', shift => `translate(0,${shift.y})`)
+      .attr('transform', d => `translate(0,${d.y})`)
       .call(s => s.select('g.text').attr('transform', d => `translate(${d.x + 4},${-rowTextHeight})`))
       .call(s => s.selectAll<SVGElement, ShiftComponent>('g.group')
         .attr('transform', d => `translate(${d.x},0)`)
