@@ -767,8 +767,8 @@ function byEmployee(employeeId, centerDate: Date, first = false, animate = false
 
   let lastOffsetY = 0, currentOffset = 0, transform = d3.zoomIdentity;
   function zoomStarted() {
-    const { sourceEvent: {offsetY} } = d3.event;
-    lastOffsetY = offsetY;
+    const { sourceEvent } = d3.event;
+    lastOffsetY = sourceEvent.type == "touchstart" ? sourceEvent.touches[0].screenY : sourceEvent.offsetY;
   }
 
   function zoomEnded() {
@@ -780,8 +780,10 @@ function byEmployee(employeeId, centerDate: Date, first = false, animate = false
     xScale = d3.event.transform.rescaleX(xScaleCopy);
 
     // manually compute the drag distance and create zoom transform
-    const { sourceEvent: { offsetY }} = d3.event;
-    transform = d3.zoomIdentity.translate(0, offsetY - lastOffsetY + currentOffset);
+    // const { sourceEvent: { offsetY }} = d3.event;
+    const { sourceEvent: {type, touches, offsetY} } = d3.event;
+    const dy = (type == 'touchmove' ? touches[0].screenY : offsetY) - lastOffsetY + currentOffset;
+    transform = d3.zoomIdentity.translate(0, dy);
     yScale = transform.rescaleY(yScaleCopy);
 
     topAxis = topAxis.scale(xScale);
