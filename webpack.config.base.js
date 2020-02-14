@@ -9,7 +9,7 @@ module.exports = {
     index: './src/index.ts',
     next: './src/next.ts',
     simple: './src/simple.ts',
-    each: './src/each.ts',
+    concept: './src/concept.ts',
     worker: './src/data.worker.ts',
     sw: './src/sw.js',
     vendor: Object.keys(package.dependencies),
@@ -34,10 +34,10 @@ module.exports = {
       filename: 'simple.html',
     }),
     new HtmlWebpackPlugin({
-      title: 'Each',
-      chunks: ['vendor', 'each'],
-      template: 'src/each.html',
-      filename: 'each.html',
+      title: 'Concept',
+      chunks: ['vendor', 'concept'],
+      template: 'src/concept.html',
+      filename: 'concept.html',
     }),
     new WorkerPlugin({
       globalObject: 'self',

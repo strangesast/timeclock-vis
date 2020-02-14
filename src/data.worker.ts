@@ -1,5 +1,47 @@
 import * as Comlink from 'comlink';
-import { Shift, ShiftState, formatTime, addHours, inFieldOfView } from './util';
+import { formatTime, addHours, inFieldOfView } from './util';
+import { EmployeeID, Employee, Shift, ShiftState } from './models';
+
+
+declare const DEV: boolean;
+
+let obj;
+
+if (DEV) {
+  const data = require('./mocking').generateData();
+  obj = {
+    async getShiftsInRange([minDate, maxDate]: [Date, Date]): Promise<{shifts: Shift[], employees: {[id: string]: Employee}, employeeIds: EmployeeID[]}> {
+      const { shifts, employees } = data;
+      const filteredShifts: Shift[] = [];
+      const filteredEmployees = {};
+      const employeeIds = [];
+      for (const shift of shifts) {
+        if (inFieldOfView([shift.start, shift.end], [minDate, maxDate])) {
+          const employeeId = shift.employee.id;
+          if (!employeeIds.includes(employeeId)) {
+            filteredEmployees[employeeId] = employees[employeeId];
+            employeeIds.push(employeeId);
+          }
+          filteredShifts.push(shift);
+        }
+      }
+      return { shifts: filteredShifts, employees: filteredEmployees, employeeIds };
+    },
+    async getShiftsByEmployeeInRange([minDate, maxDate], employeeId: EmployeeID): Promise<{employee: Employee, shifts: Shift[]}> {
+      const { shifts, employees } = data;
+      const employee = employees[employeeId];
+      const filteredShifts: Shift[] = [];
+      for (const shift of shifts) {
+        if (shift.employee.id == employeeId && inFieldOfView([shift.start, shift.end], [minDate, maxDate])) {
+          filteredShifts.push(shift);
+        }
+      }
+      return {shifts: filteredShifts, employee};
+    },
+  };
+} else {
+
+}
 
 async function get(key) {
   const res = await fetch(`data/${key}.json`);
@@ -7,7 +49,7 @@ async function get(key) {
   return json;
 }
 
-const obj = {
+Object.assign(obj, {
   data: {
     shifts: get('shifts').then(arr => {
       for (const each of arr) {
@@ -57,7 +99,7 @@ const obj = {
           // made up bs
           typicalEnd = new Date(shift.start);
           typicalEnd.setHours(typicalEnd.getHours() + 8);
-          state = ShiftState.InProgress;
+          state = ShiftState.Incomplete;
         }
         shifts.push({
           id: shift.id,
@@ -74,7 +116,7 @@ const obj = {
     }
     return {employeeIds, employees, shifts};
   }
-};
+});
 
 function sortBy(arr) {
   return function (a, b) {
