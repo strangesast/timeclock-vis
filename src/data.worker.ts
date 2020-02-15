@@ -7,7 +7,7 @@ declare const DEV: boolean;
 
 let obj;
 
-if (DEV) {
+// if (DEV) {
   let data = null;
 
   obj = {
@@ -45,9 +45,9 @@ if (DEV) {
       return {shifts: filteredShifts, employee};
     },
   };
-} else {
-
-}
+// } else {
+// 
+// }
 
 async function get(key) {
   const res = await fetch(`data/${key}.json`);
