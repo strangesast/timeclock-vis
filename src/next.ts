@@ -1,4 +1,6 @@
 import * as d3 from 'd3';
+import { Observable, Subject, timer } from 'rxjs';
+import { switchMap, map, scan, startWith, audit, auditTime, throttleTime } from 'rxjs/operators';
 import { formatDuration, formatTime, inFieldOfView, throttle, employeeColorScale, debounce } from './util';
 import { ShiftState, Shift, Employee, ShiftComponent, ShiftComponentType, EmployeeID, TranslateExtent } from './models';
 import * as Comlink from 'comlink';
@@ -86,11 +88,28 @@ function byTime([minDate, maxDate]) {
     dateAxis = svg.append('g').classed('axis date', true);
   }
 
+  const updated = new Subject<[Date, Date]>();
+
+  const sub = fancy(updated.pipe(map(arg => [arg])), [[minDate, maxDate]], worker.getShiftsInRange.bind(worker))
+    .subscribe(({shifts, employeeIds, employees}) => draw(shifts, employeeIds, employees));
+
+  // let sub = updated.pipe(
+  //   throttleTime(100), // start new fetch new range at most every .1s
+  //   startWith([minDate, maxDate]),
+  //   scan(([_, index], value) => [value, index + 1], [null, -1]),
+  //   switchMap(([dateRange, index]) => worker.getShiftsInRange(dateRange).then(value => [value, index])),
+  //   audit(([value, index]) => {
+  //     return timer(index > 0 ? 1000 : 0)
+  //   }), // only update screen at most once a second
+  //   map(([value, index]) => value),
+  // ).subscribe(({shifts, employeeIds, employees}) =>
+  //   draw(shifts, employeeIds, employees));
+
   drawAxis();
 
-  worker.getShiftsInRange([minDate, maxDate]).then(({shifts, employeeIds, employees}) => {
-    draw(shifts, employeeIds, employees);
-  });
+  // worker.getShiftsInRange([minDate, maxDate]).then(({shifts, employeeIds, employees}) => {
+  //   draw(shifts, employeeIds, employees);
+  // });
 
   function draw(shifts: Shift[], employeeIds: EmployeeID[], employees: {[id: string]: Employee}) {
     yScale.domain(employeeIds).range(Array.from(Array(employeeIds.length)).map((_, i) => i));
@@ -193,6 +212,7 @@ function byTime([minDate, maxDate]) {
         .call(s => s.select('text.time.start').attr('opacity', d => d.w > 120 ? 1 : 0))
         .call(s => s.select('text.time.end').attr('opacity', d => d.w > 200 ? 1 : 0).attr('x', d => d.w - 4))
       );
+    updated.next(xScale.domain());
   }
 
   function resized() {
@@ -235,6 +255,7 @@ function byTime([minDate, maxDate]) {
   const debouncedResized = debounce(resized, 200);
 
   function cleanup() {
+    sub.unsubscribe();
     svg.select('g.axis.date').remove();
     window.removeEventListener('resize', debouncedResized);
   }
@@ -249,18 +270,36 @@ function byEmployee(employeeId, centerDate: Date) {
   const domain = d3.timeDay.range(minDate, maxDate).map(d => d.toISOString().slice(0, 10));
   const j = domain.indexOf(centerDate.toISOString().slice(0, 10));
   yScale = d3.scaleTime();
-  yScale.domain([minDate, maxDate]).range([0, height - margin.bottom]);
+  yScale.domain([minDate, maxDate]).range([0, step * 7]);
   yScaleCopy = yScale.copy();
 
   xScale = d3.scaleTime().range([margin.left, width - margin.right]);
   xScaleCopy = xScale.copy();
   // yScale.domain(domain).range(Array.from(Array(domain.length)).map((_, i) => i - j));
 
+  const updated = new Subject<[Date, Date]>();
+
+  const sub = fancy(
+    updated.pipe(map(v => [employeeId, v])),
+    [employeeId, [minDate, maxDate]],
+    worker.getShiftsByEmployeeInRange.bind(worker)
+  ).subscribe(({shifts, employee}) => draw(shifts, employee));
+
+  /*
+  let sub = updated.pipe(
+    throttleTime(100), // start new fetch new range at most every .1s
+    startWith([minDate, maxDate]),
+    switchMap(dateRange => worker.getShiftsByEmployeeInRange(dateRange, employeeId)),
+    auditTime(1000), // only update screen at most once a second
+  ).subscribe(({shifts, employee}) =>
+    draw(shifts, employee));
+  */
+
 
   // query db with employee, min/max date
-  worker.getShiftsByEmployeeInRange([minDate, maxDate], employeeId).then(({employee, shifts}) => {
-    draw(shifts, employee);
-  });
+  // worker.getShiftsByEmployeeInRange([minDate, maxDate], employeeId).then(({employee, shifts}) => {
+  //   draw(shifts, employee);
+  // });
 
   let nameTitle;
   if (nameTitle = svg.select('g.title.block')) {
@@ -346,7 +385,7 @@ function byEmployee(employeeId, centerDate: Date) {
         ),
       update => update
         .each(updatePositions)
-        .call(s => s.selectAll('g.group').data(d => d.components))
+        .call(s => s.selectAll('g.group').data(d => d.components)) // strange that this is required
         .call(s => s.transition(t).delay(100)
           .call(s => s.select('g.text')
             .each(function (d) {
@@ -375,7 +414,7 @@ function byEmployee(employeeId, centerDate: Date) {
     ).on('click', function (d) {
       d3.select(this).on('click', null);
       cleanup();
-      byTime([d3.timeHour.offset(d.start, -2), d3.timeHour.offset(d.end, 2)]);
+      byTime([d3.timeHour.offset(d.start, -4), d3.timeHour.offset(d.end, 4)]);
     });
   }
 
@@ -401,8 +440,10 @@ function byEmployee(employeeId, centerDate: Date) {
   }
 
   let lastOffsetY = 0, currentOffset = 0, transform = d3.zoomIdentity;
+
   function zoomStarted() {
     const { sourceEvent } = d3.event;
+    if (sourceEvent == null) return;
     lastOffsetY = sourceEvent.type == "touchstart" ? sourceEvent.touches[0].screenY : sourceEvent.offsetY;
   }
 
@@ -411,22 +452,22 @@ function byEmployee(employeeId, centerDate: Date) {
   }
 
   function zoomed() {
-
     xScale = d3.event.transform.rescaleX(xScaleCopy);
 
     // manually compute the drag distance and create zoom transform
-    // const { sourceEvent: { offsetY }} = d3.event;
-    const { sourceEvent: {type, touches, offsetY} } = d3.event;
-    const dy = (type == 'touchmove' ? touches[0].screenY : offsetY) - lastOffsetY + currentOffset;
-    transform = d3.zoomIdentity.translate(0, dy);
-    yScale = transform.rescaleY(yScaleCopy);
-
+    const { sourceEvent } = d3.event;
+    let dy = 0;
+    if (sourceEvent != null) {
+      const {type, touches, offsetY } = sourceEvent; 
+      dy = (type == 'touchmove' ? touches[0].screenY : offsetY) - lastOffsetY + currentOffset;
+      // dy = Math.max(dy, 0);
+      transform = d3.zoomIdentity.translate(0, dy);
+      yScale = transform.rescaleY(yScaleCopy);
+    }
     topAxis = topAxis.scale(xScale);
     bottomAxis = bottomAxis.scale(xScale);
     drawAxis();
     
-    const t = d3.zoomIdentity.translate(0, d3.event.transform.y).scale(d3.event.transform.k);
-
     svg.select('g.shifts')
       .selectAll<SVGElement, Shift>('g.shift')
       .each(updatePositions)
@@ -448,16 +489,23 @@ function byEmployee(employeeId, centerDate: Date) {
   }
 
   function resized() {
-
     const t = d3.transition().duration(200);
 
     updateSize(); // update width / height vars
-    xScale = xScale.range([margin.left, width - margin.right]);
+    const xRange = [margin.left, width - margin.right];
+    xScale = xScale.range(xRange);
     xScaleCopy = xScale.copy();
     topAxis.scale(xScale);
     bottomAxis.scale(xScale);
+    const [minx, maxx] = xRange;
+    const extent: [[number, number], [number,number]] = [
+      [minx, -Infinity],
+      [maxx, Infinity]
+    ];
+    zoom = zoom.translateExtent(extent);
+    // svg.transition(t).call(zoom.transform, d3.zoomIdentity)
+ 
     drawAxis();
-
 
     svg.select('g.shifts').selectAll<SVGElement, Shift>('g.shift')
       .each(updatePositions)
@@ -486,11 +534,13 @@ function byEmployee(employeeId, centerDate: Date) {
           .attr('opacity', d => d.w > 200 ? 1 : 0)
           .attr('x', d => d.w - 4))
       );
+
   }
 
   const debouncedResized = debounce(resized, 200);
 
   function cleanup() {
+    sub.unsubscribe();
     svg.select('g.title.block').remove();
     window.removeEventListener('resize', debouncedResized);
   }
@@ -564,7 +614,6 @@ function drawShift(sel, bandwidth) {
     );
 }
 
-
 const arc = d3.arc();
 function drawMiniPie(sel, frac: number, employeeId: string, radius = 10) {
   const c = employeeColorScale(employeeId);
@@ -633,11 +682,20 @@ function drawAxis() {
       } else {
         x += spacing / 2 - padding;
       }
-
       return `translate(${x},${margin.top / 2})`;
     });
 }
 
+function fancy<T1 extends Array<any>, T2>(input: Observable<T1>, first: T1, fn: (...args: T1[]) => Promise<T2>) {
+  return input.pipe(
+    throttleTime(100), // start new fetch new range at most every .1s
+    startWith(first),
+    scan(([_, index], value) => [value, index + 1], [null, -1]), // yuck
+    switchMap(([args, index]: [T1, number]) => fn(...args).then(result => [result, index])),
+    audit(([value, index]) => timer(index > 0 ? 1000 : 0)), // only update screen at most once a second
+    map(([value, index]) => value),
+  );
+}
 
 function formatDateSimple(date: Date): string {
   const m = date.getMonth() + 1;

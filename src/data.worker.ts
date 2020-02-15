@@ -32,7 +32,7 @@ if (DEV) {
       }
       return { shifts: filteredShifts, employees: filteredEmployees, employeeIds };
     },
-    async getShiftsByEmployeeInRange([minDate, maxDate], employeeId: EmployeeID): Promise<{employee: Employee, shifts: Shift[]}> {
+    async getShiftsByEmployeeInRange(employeeId: EmployeeID, [minDate, maxDate]: [Date, Date]): Promise<{employee: Employee, shifts: Shift[]}> {
       if (data == null) throw new Error('data not initialized');
       const { shifts, employees } = data;
       const employee = employees[employeeId];
