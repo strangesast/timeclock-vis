@@ -1,6 +1,6 @@
 import * as d3 from 'd3';
 import { Observable, Subject, timer } from 'rxjs';
-import { switchMap, map, scan, startWith, audit, auditTime, throttleTime } from 'rxjs/operators';
+import { switchMap, filter, map, scan, startWith, audit, auditTime, throttleTime } from 'rxjs/operators';
 import { formatDuration, formatTime, inFieldOfView, throttle, employeeColorScale, debounce } from './util';
 import { ShiftState, Shift, Employee, ShiftComponent, ShiftComponentType, EmployeeID, TranslateExtent } from './models';
 import * as Comlink from 'comlink';
@@ -65,7 +65,8 @@ function byTime([minDate, maxDate]) {
   svg.call(zoom = d3.zoom()
     .translateExtent(defaultExtent)
     .scaleExtent([.4, 100])
-    .on('zoom', zoomed));
+    .on('zoom', zoomed)
+  );
   xScale = d3.scaleTime().domain([minDate, maxDate]).range([margin.left, width - margin.right]);
   xScaleCopy = xScale.copy();
   yScale = d3.scaleOrdinal<number>();
@@ -90,32 +91,18 @@ function byTime([minDate, maxDate]) {
 
   const updated = new Subject<[Date, Date]>();
 
-  const sub = fancy(updated.pipe(map(arg => [arg])), [[minDate, maxDate]], worker.getShiftsInRange.bind(worker))
+  const o = updated.pipe(
+    map(arg => [arg]), // should not refresh when minDate > lastMinDate && maxDate < lastMaxDate
+  );
+  const sub = fancy(o, [[minDate, maxDate]], worker.getShiftsInRange.bind(worker))
     .subscribe(({shifts, employeeIds, employees}) => draw(shifts, employeeIds, employees));
 
-  // let sub = updated.pipe(
-  //   throttleTime(100), // start new fetch new range at most every .1s
-  //   startWith([minDate, maxDate]),
-  //   scan(([_, index], value) => [value, index + 1], [null, -1]),
-  //   switchMap(([dateRange, index]) => worker.getShiftsInRange(dateRange).then(value => [value, index])),
-  //   audit(([value, index]) => {
-  //     return timer(index > 0 ? 1000 : 0)
-  //   }), // only update screen at most once a second
-  //   map(([value, index]) => value),
-  // ).subscribe(({shifts, employeeIds, employees}) =>
-  //   draw(shifts, employeeIds, employees));
-
   drawAxis();
-
-  // worker.getShiftsInRange([minDate, maxDate]).then(({shifts, employeeIds, employees}) => {
-  //   draw(shifts, employeeIds, employees);
-  // });
 
   function draw(shifts: Shift[], employeeIds: EmployeeID[], employees: {[id: string]: Employee}) {
     yScale.domain(employeeIds).range(Array.from(Array(employeeIds.length)).map((_, i) => i));
 
     shifts.forEach(updatePositions);
-
 
     const t = d3.transition().duration(500);
 
@@ -131,13 +118,7 @@ function byTime([minDate, maxDate]) {
               .attr('fill', d => d.fill.toString())
               .attr('stroke', d => d.fill.toString())
             )
-            .call(s => s.select('text.time.start')
-              .attr('opacity', d => d.w > 120 ? 1 : 0)
-            )
-            .call(s => s.select('text.time.end')
-              .attr('opacity', d => d.w > 200 ? 1 : 0)
-              .attr('x', d => d.w - 4)
-            )
+            .each(filterShiftComponentTimeVisibility),
           )
           .each(function (d) {
             d3.select(this)
@@ -151,27 +132,24 @@ function byTime([minDate, maxDate]) {
         update => update
           .call(s => s.selectAll('g.group').data(d => d.components))
           .call(s => s.transition(t).delay(100)
-          .call(s => s.select('g.text').each(function (d) {
-            const s = d3.select(this);
-            const text = s.select<SVGGraphicsElement>('text')
-              .text((d: any) => d.employee.name);
-            const dx = text.node().getBBox().width + 4;
-            s.select('g.duration').attr('transform', `translate(${dx},0)`);
-          }))
-          .call(s => s.select('g.text').attr('transform', (d: any) => `translate(${d.x+4},${-rowTextHeight})`))
-          .attr('transform', d => `translate(0,${d.y})`)
-          .selectAll<SVGElement, ShiftComponent>('g.group')
-            .attr('transform', d => `translate(${d.x},0)`)
-            .call(s => s.select('rect')
-              .attr('width', d => d.w)
-              .attr('fill', d => d.fill.toString())
-              .attr('stroke', d => d.fill.toString())
-            )
-            .call(s => s.select('text.time.start')
-              .attr('opacity', d => d.w > 120 ? 1 : 0))
-            .call(s => s.select('text.time.end')
-              .attr('opacity', d => d.w > 200 ? 1 : 0)
-              .attr('x', d => d.w - 4))),
+            .call(s => s.select('g.text').each(function (d) {
+              const s = d3.select(this);
+              const text = s.select<SVGGraphicsElement>('text')
+                .text((d: any) => d.employee.name);
+              const dx = text.node().getBBox().width + 4;
+              s.select('g.duration').attr('transform', `translate(${dx},0)`);
+            }))
+            .call(s => s.select('g.text').attr('transform', (d: any) => `translate(${d.x+4},${-rowTextHeight})`))
+            .attr('transform', d => `translate(0,${d.y})`)
+            .selectAll<SVGElement, ShiftComponent>('g.group')
+              .attr('transform', d => `translate(${d.x},0)`)
+              .call(s => s.select('rect')
+                .attr('width', d => d.w)
+                .attr('fill', d => d.fill.toString())
+                .attr('stroke', d => d.fill.toString())
+              )
+              .each(filterShiftComponentTimeVisibility)
+          ),
         exit => exit.attr('opacity', 1).transition(t).attr('opacity', 0).remove(),
       )
       .on('click', function(d) {
@@ -209,8 +187,7 @@ function byTime([minDate, maxDate]) {
       .call(s => s.selectAll<SVGElement, ShiftComponent>('g.group')
         .attr('transform', d => `translate(${d.x},0)`)
         .call(s => s.select('rect').attr('width', d => d.w))
-        .call(s => s.select('text.time.start').attr('opacity', d => d.w > 120 ? 1 : 0))
-        .call(s => s.select('text.time.end').attr('opacity', d => d.w > 200 ? 1 : 0).attr('x', d => d.w - 4))
+        .each(filterShiftComponentTimeVisibility)
       );
     updated.next(xScale.domain());
   }
@@ -227,7 +204,6 @@ function byTime([minDate, maxDate]) {
 
     svg.select('g.shifts').selectAll<SVGElement, Shift>('g.shift')
       .each(updatePositions)
-      // .call(s => s.selectAll('g.group').data(d => d.components))
       .call(s => s.transition(t)
         .call(s => s.select('g.text').each(function (d) {
           const s = d3.select(this);
@@ -236,7 +212,9 @@ function byTime([minDate, maxDate]) {
           const dx = text.node().getBBox().width + 4;
           s.select('g.duration').attr('transform', `translate(${dx},0)`);
         }))
-        .call(s => s.select('g.text').attr('transform', (d: any) => `translate(${d.x+4},${-rowTextHeight})`))
+        .call(s => s.select('g.text')
+          .attr('transform', (d: any) => `translate(${d.x+4},${-rowTextHeight})`)
+        )
         .attr('transform', d => `translate(0,${d.y})`)
         .selectAll<SVGElement, ShiftComponent>('g.group')
           .attr('transform', d => `translate(${d.x},0)`)
@@ -245,11 +223,8 @@ function byTime([minDate, maxDate]) {
             .attr('fill', d => d.fill.toString())
             .attr('stroke', d => d.fill.toString())
           )
-          .call(s => s.select('text.time.start')
-            .attr('opacity', d => d.w > 120 ? 1 : 0))
-          .call(s => s.select('text.time.end')
-            .attr('opacity', d => d.w > 200 ? 1 : 0)
-            .attr('x', d => d.w - 4)));
+          .each(filterShiftComponentTimeVisibility)
+      );
   }
 
   const debouncedResized = debounce(resized, 200);
@@ -261,6 +236,16 @@ function byTime([minDate, maxDate]) {
   }
 
   window.addEventListener('resize', debouncedResized);
+}
+
+function filterShiftComponentTimeVisibility(d) {
+  const {w} = d;
+  const sel = d3.select(this);
+  sel.select('text.time.start')
+    .attr('opacity', w > 120 ? 1 : 0);
+  sel.select('text.time.end')
+    .attr('opacity', w > 200 ? 1 : 0)
+    .attr('x', d => w - 4);
 }
 
 function byEmployee(employeeId, centerDate: Date) {
@@ -275,7 +260,6 @@ function byEmployee(employeeId, centerDate: Date) {
 
   xScale = d3.scaleTime().range([margin.left, width - margin.right]);
   xScaleCopy = xScale.copy();
-  // yScale.domain(domain).range(Array.from(Array(domain.length)).map((_, i) => i - j));
 
   const updated = new Subject<[Date, Date]>();
 
@@ -284,22 +268,6 @@ function byEmployee(employeeId, centerDate: Date) {
     [employeeId, [minDate, maxDate]],
     worker.getShiftsByEmployeeInRange.bind(worker)
   ).subscribe(({shifts, employee}) => draw(shifts, employee));
-
-  /*
-  let sub = updated.pipe(
-    throttleTime(100), // start new fetch new range at most every .1s
-    startWith([minDate, maxDate]),
-    switchMap(dateRange => worker.getShiftsByEmployeeInRange(dateRange, employeeId)),
-    auditTime(1000), // only update screen at most once a second
-  ).subscribe(({shifts, employee}) =>
-    draw(shifts, employee));
-  */
-
-
-  // query db with employee, min/max date
-  // worker.getShiftsByEmployeeInRange([minDate, maxDate], employeeId).then(({employee, shifts}) => {
-  //   draw(shifts, employee);
-  // });
 
   let nameTitle;
   if (nameTitle = svg.select('g.title.block')) {
@@ -380,8 +348,7 @@ function byEmployee(employeeId, centerDate: Date) {
             .attr('fill', d => d.fill.toString())
             .attr('stroke', d => d.fill.toString())
           )
-          .call(s => s.select('text.time.start').attr('opacity', d => d.w > 120 ? 1 : 0))
-          .call(s => s.select('text.time.end').attr('opacity', d => d.w > 200 ? 1 : 0).attr('x', d => d.w - 4))
+          .each(filterShiftComponentTimeVisibility)
         ),
       update => update
         .each(updatePositions)
@@ -404,11 +371,7 @@ function byEmployee(employeeId, centerDate: Date) {
             .attr('fill', d => d.fill.toString())
             .attr('stroke', d => d.fill.toString())
           )
-          .call(s => s.select('text.time.start')
-            .attr('opacity', d => d.w > 120 ? 1 : 0))
-          .call(s => s.select('text.time.end')
-            .attr('opacity', d => d.w > 200 ? 1 : 0)
-            .attr('x', d => d.w - 4))
+          .each(filterShiftComponentTimeVisibility)
         ),
       exit => exit.attr('opacity', 1).transition(t).attr('opacity', 0).remove(),
     ).on('click', function (d) {
@@ -480,11 +443,7 @@ function byEmployee(employeeId, centerDate: Date) {
           .attr('fill', d => d.fill.toString())
           .attr('stroke', d => d.fill.toString())
         )
-        .call(s => s.select('text.time.start')
-          .attr('opacity', d => d.w > 120 ? 1 : 0))
-        .call(s => s.select('text.time.end')
-          .attr('opacity', d => d.w > 200 ? 1 : 0)
-          .attr('x', d => d.w - 4))
+        .each(filterShiftComponentTimeVisibility)
       );
   }
 
@@ -528,11 +487,7 @@ function byEmployee(employeeId, centerDate: Date) {
           .attr('fill', d => d.fill.toString())
           .attr('stroke', d => d.fill.toString())
         )
-        .call(s => s.select('text.time.start')
-          .attr('opacity', d => d.w > 120 ? 1 : 0))
-        .call(s => s.select('text.time.end')
-          .attr('opacity', d => d.w > 200 ? 1 : 0)
-          .attr('x', d => d.w - 4))
+        .each(filterShiftComponentTimeVisibility)
       );
 
   }
