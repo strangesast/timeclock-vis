@@ -95,81 +95,129 @@ function byTime([minDate, maxDate]) {
     map(arg => [arg]), // should not refresh when minDate > lastMinDate && maxDate < lastMaxDate
   );
   const sub = fancy(o, [[minDate, maxDate]], worker.getShiftsInRange.bind(worker))
-    .subscribe(({shifts, employeeIds, employees}) => draw(shifts, employeeIds, employees));
+    .subscribe(({shifts, employeeIds, employees}) =>
+      draw(shifts, employeeIds, employees));
 
   drawAxis();
 
+  let i = 0;
+
   function draw(shifts: Shift[], employeeIds: EmployeeID[], employees: {[id: string]: Employee}) {
-    yScale.domain(employeeIds).range(Array.from(Array(employeeIds.length)).map((_, i) => i));
+    yScale.domain(employeeIds).range(Array.from(Array(employeeIds.length)).map((_, i) => i * step + rowTextHeight));
 
     shifts.forEach(updatePositions);
 
     const t = d3.transition().duration(500);
 
-    svg.select('g.shifts').raise().selectAll<SVGElement, Shift>('g.shift').data(shifts, d => d.id)
-      .join(
-        enter => enter.append('g')
-          .call(drawShift, bandwidth)
-          .call(s => s.select('g.text').attr('transform', d => `translate(${d.x+4},${-rowTextHeight})`))
-          .call(s => s.selectAll<SVGElement, ShiftComponent>('g.group')
-            .attr('transform', d => `translate(${d.x},0)`)
-            .call(s => s.select('rect')
-              .attr('width', d => d.w)
-              .attr('fill', d => d.fill.toString())
-              .attr('stroke', d => d.fill.toString())
-            )
-            .each(filterShiftComponentTimeVisibility),
-          )
-          .each(function (d) {
-            d3.select(this)
-              .attr('opacity', 0)
-              .attr('transform', `translate(0,${d.y + 40})`)
-              .transition(t)
-              .delay(200)
-              .attr('opacity', 1)
-              .attr('transform', `translate(0,${d.y})`)
-          }),
-        update => update
-          .call(s => s.selectAll('g.group').data(d => d.components))
-          .call(s => s.transition(t).delay(100)
-            .call(s => s.select('g.text').each(function (d) {
-              const s = d3.select(this);
-              const text = s.select<SVGGraphicsElement>('text')
-                .text((d: any) => d.employee.name);
-              const dx = text.node().getBBox().width + 4;
-              s.select('g.duration').attr('transform', `translate(${dx},0)`);
-            }))
-            .call(s => s.select('g.text').attr('transform', (d: any) => `translate(${d.x+4},${-rowTextHeight})`))
-            .attr('transform', d => `translate(0,${d.y})`)
-            .selectAll<SVGElement, ShiftComponent>('g.group')
+    if (i == 0) {
+      i = 1;
+      svg.select('g.shifts').raise().selectAll<SVGElement, Shift>('g.shift').data(shifts, d => d.id)
+        .join(
+          enter => enter.append('g')
+            .call(drawShift, bandwidth)
+            .call(s => s.select('g.text').attr('transform', d => `translate(${d.x+4},${-rowTextHeight})`))
+            .call(s => s.selectAll<SVGElement, ShiftComponent>('g.group')
               .attr('transform', d => `translate(${d.x},0)`)
               .call(s => s.select('rect')
                 .attr('width', d => d.w)
                 .attr('fill', d => d.fill.toString())
                 .attr('stroke', d => d.fill.toString())
               )
-              .each(filterShiftComponentTimeVisibility)
-          ),
-        exit => exit.attr('opacity', 1).transition(t).attr('opacity', 0).remove(),
-      )
-      .on('click', function(d) {
-        d3.select(this).on('click', null); // probs should be in byEmployee
-        cleanup();
-        byEmployee(d.employee.id, d.start);
-      });
+              .each(filterShiftComponentTimeVisibility),
+            )
+            .each(function (d) {
+              d3.select(this)
+                .attr('opacity', 0)
+                .attr('transform', `translate(0,${d.y + 40})`)
+                .transition(t)
+                .delay(200)
+                .attr('opacity', 1)
+                .attr('transform', `translate(0,${d.y})`)
+            }),
+          update => update
+            .call(s => s.selectAll('g.group').data(d => d.components))
+            .call(s => s.transition(t).delay(100)
+              .call(s => s.select('g.text').each(function (d) {
+                const s = d3.select(this);
+                const text = s.select<SVGGraphicsElement>('text')
+                  .text((d: any) => d.employee.name);
+                const dx = text.node().getBBox().width + 4;
+                s.select('g.duration').attr('transform', `translate(${dx},0)`);
+              }))
+              .call(s => s.select('g.text').attr('transform', (d: any) => `translate(${d.x+4},${-rowTextHeight})`))
+              .attr('transform', d => `translate(0,${d.y})`)
+              .selectAll<SVGElement, ShiftComponent>('g.group')
+                .attr('transform', d => `translate(${d.x},0)`)
+                .call(s => s.select('rect')
+                  .attr('width', d => d.w)
+                  .attr('fill', d => d.fill.toString())
+                  .attr('stroke', d => d.fill.toString())
+                )
+                .each(filterShiftComponentTimeVisibility)
+            ),
+          exit => exit.attr('opacity', 1).transition(t).attr('opacity', 0).remove(),
+        )
+        .on('click', function(d) {
+          d3.select(this).on('click', null); // probs should be in byEmployee
+          cleanup();
+          byEmployee(d.employee.id, d.start);
+        });
+    } else {
+      svg.select('g.shifts').selectAll<SVGElement, Shift>('g.shift').data(shifts, d => d.id)
+        .join(
+          enter => enter.append('g')
+            .call(drawShift, bandwidth)
+            .attr('transform', d => `translate(0,${d.y})`)
+            .call(s => s.select('g.text').attr('transform', d => `translate(${d.x+4},${-rowTextHeight})`))
+            .call(s => s.selectAll<SVGElement, ShiftComponent>('g.group')
+              .attr('transform', d => `translate(${d.x},0)`)
+              .call(s => s.select('rect')
+                .attr('width', d => d.w)
+                .attr('fill', d => d.fill.toString())
+                .attr('stroke', d => d.fill.toString())
+              )
+              .each(filterShiftComponentTimeVisibility),
+            )
+            .call(s => s.attr('opacity', 0).transition(t).delay(200).attr('opacity', 1)),
+          update => update
+            .call(s => s.selectAll('g.group').data(d => d.components))
+            .call(s => s
+              .call(s => s.select('g.text').each(function (d) {
+                const s = d3.select(this);
+                const text = s.select<SVGGraphicsElement>('text').text((d: any) => d.employee.name);
+                const dx = text.node().getBBox().width + 4;
+                s.select('g.duration').attr('transform', `translate(${dx},0)`);
+              }))
+              .call(s => s.select('g.text').attr('transform', (d: any) => `translate(${d.x+4},${-rowTextHeight})`))
+              .attr('transform', d => `translate(0,${d.y})`)
+              .selectAll<SVGElement, ShiftComponent>('g.group')
+                .attr('transform', d => `translate(${d.x},0)`)
+                .call(s => s.select('rect')
+                  .attr('width', d => d.w)
+                  .attr('fill', d => d.fill.toString())
+                  .attr('stroke', d => d.fill.toString())
+                )
+                .each(filterShiftComponentTimeVisibility)
+            ),
+          exit => exit.attr('opacity', 1).transition(t).attr('opacity', 0).remove(),
+        )
+        .on('click', function(d) {
+          d3.select(this).on('click', null); // probs should be in byEmployee
+          cleanup();
+          byEmployee(d.employee.id, d.start);
+        });
+    }
   };
 
   function updatePositions(shift: Shift) {
     for (const comp of shift.components) {
-      const x = xScale(comp.start);
       const index = comp.type == ShiftComponentType.Projected ? 1 : 0;
-      const fill = employeeColorScale(shift.employee.id)[index];
-      comp.fill = d3.color(fill)
-      comp.x = x;
+      comp.fill = d3.color(employeeColorScale(shift.employee.id)[index]);
+      comp.x = xScale(comp.start);
       comp.w = xScale(comp.end) - comp.x;
     }
-    shift.y = yScale(shift.employee.id) * step + rowTextHeight;
-    const [a, b] = [xScale(shift.start), xScale(shift.end)];
+    shift.y = yScale(shift.employee.id);
+    const [a, b] = [shift.start, shift.end].map(xScale);
     shift.x = Math.min(Math.max(a, 0), b);
     return shift;
   }
@@ -267,7 +315,8 @@ function byEmployee(employeeId, centerDate: Date) {
     updated.pipe(map(v => [employeeId, v])),
     [employeeId, [minDate, maxDate]],
     worker.getShiftsByEmployeeInRange.bind(worker)
-  ).subscribe(({shifts, employee}) => draw(shifts, employee));
+  ).subscribe(({shifts, employee}) =>
+    draw(shifts, employee));
 
   let nameTitle;
   if (nameTitle = svg.select('g.title.block')) {
@@ -391,18 +440,19 @@ function byEmployee(employeeId, centerDate: Date) {
 
   function updatePositions(shift: Shift) {
     for (const comp of shift.components) {
-      comp.fill = d3.color(employeeColorScale(shift.employee.id)[comp.type == ShiftComponentType.Projected ? 1 : 0]);
+      const index = comp.type == ShiftComponentType.Projected ? 1 : 0;
+      comp.fill = d3.color(employeeColorScale(shift.employee.id)[index]);
       comp.x = xScale(normalizeDate(comp.start));
       comp.w = xScale(normalizeDate(comp.end)) - comp.x;
     }
-    // const dy = (yScale(shift.start.toISOString().slice(0, 10)) - 1) * step;
-    // shift.y = dy + (height - margin.bottom) / 2;
     shift.y = yScale(d3.timeDay.floor(shift.start));
     shift.x = Math.max(xScale(normalizeDate(shift.start)), 0);
     return shift;
   }
 
-  let lastOffsetY = 0, currentOffset = 0, transform = d3.zoomIdentity;
+  let lastOffsetY = 0,
+    currentOffset = 0,
+    transform = d3.zoomIdentity;
 
   function zoomStarted() {
     const { sourceEvent } = d3.event;
@@ -647,7 +697,7 @@ function fancy<T1 extends Array<any>, T2>(input: Observable<T1>, first: T1, fn: 
     startWith(first),
     scan(([_, index], value) => [value, index + 1], [null, -1]), // yuck
     switchMap(([args, index]: [T1, number]) => fn(...args).then(result => [result, index])),
-    audit(([value, index]) => timer(index > 0 ? 1000 : 0)), // only update screen at most once a second
+    audit(([value, index]) => timer(index > 0 ? 400 : 0)), // only update screen at most once a second
     map(([value, index]) => value),
   );
 }
