@@ -71,3 +71,5 @@ export interface Shift {
   y: number;
   x: number;
 }
+
+export type TranslateExtent = [[number, number], [number, number]];

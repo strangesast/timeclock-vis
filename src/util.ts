@@ -1,3 +1,18 @@
+import * as d3 from 'd3';
+
+export const employeeColorScale = (function() {
+  const scale = d3.scaleOrdinal();
+  const colors = d3.schemePaired.slice(0, 10);
+  const pairs = [];
+  for (let i = 0; i < colors.length; i+=2) {
+    const pair = [colors[i+1], colors[i]];
+    pairs.push(pair);
+  }
+  scale.domain(pairs.map((_, i) => i.toString())).range(pairs);
+  return scale;
+})();
+
+
 export const colors = {
   lightBlue: '#cfe2f3',
   darkBlue: '#6fa8dc',

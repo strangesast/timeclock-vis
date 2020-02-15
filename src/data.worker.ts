@@ -8,9 +8,14 @@ declare const DEV: boolean;
 let obj;
 
 if (DEV) {
-  const data = require('./mocking').generateData();
+  let data = null;
+
   obj = {
+    async initializeData(date = new Date()) {
+      data = require('./mocking').generateData(date);
+    },
     async getShiftsInRange([minDate, maxDate]: [Date, Date]): Promise<{shifts: Shift[], employees: {[id: string]: Employee}, employeeIds: EmployeeID[]}> {
+      if (data == null) throw new Error('data not initialized');
       const { shifts, employees } = data;
       const filteredShifts: Shift[] = [];
       const filteredEmployees = {};
@@ -28,6 +33,7 @@ if (DEV) {
       return { shifts: filteredShifts, employees: filteredEmployees, employeeIds };
     },
     async getShiftsByEmployeeInRange([minDate, maxDate], employeeId: EmployeeID): Promise<{employee: Employee, shifts: Shift[]}> {
+      if (data == null) throw new Error('data not initialized');
       const { shifts, employees } = data;
       const employee = employees[employeeId];
       const filteredShifts: Shift[] = [];
