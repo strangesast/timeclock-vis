@@ -33,7 +33,7 @@ cache:
 script:
   - docker-compose build
   - npm install
-  - npm run-script build
+  - npm run-script build:ci
 
 deploy:
   - provider: pages

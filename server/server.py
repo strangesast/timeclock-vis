@@ -91,7 +91,7 @@ async def background(app):
 async def main():
     app = web.Application()
     app['websockets'] = weakref.WeakSet()
-    HOST = '192.168.86.11'
+    HOST = '0.0.0.0'
     app['db'] = motor.motor_asyncio.AsyncIOMotorClient(f'mongodb://user:password@{HOST}:27017')
     app.add_routes(routes)
     app.on_shutdown.append(on_shutdown)

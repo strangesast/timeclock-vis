@@ -2,7 +2,9 @@
   "name": "timeclock-vis",
   "scripts": {
     "start": "webpack-dev-server --config webpack.config.dev.js",
+    "start:mocking": "GENERATE_MOCKING=yes webpack-dev-server --config webpack.config.dev.js",
     "build": "webpack --config webpack.config.prod.js",
+    "build:ci": "env GENERATE_MOCKING=yes webpack --config webpack.config.prod.js",
     "build:dev": "webpack --config webpack.config.dev.js",
     "test": "mocha -r ts-node/register src/**/*.spec.ts",
     "webpack-bundle-analyzer": "webpack-bundle-analyzer ./dist/stats.json"
@@ -32,7 +34,8 @@
     "webpack-dev-server": "^3.9.0",
     "webpack-merge": "^4.2.2",
     "webpack-worker": "0.0.20",
-    "worker-plugin": "^3.2.0"
+    "worker-plugin": "^3.2.0",
+    "yn": "^4.0.0"
   },
   "dependencies": {
     "comlink": "^4.2.0",

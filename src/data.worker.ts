@@ -3,18 +3,56 @@ import { formatTime, addHours, inFieldOfView } from './util';
 import { EmployeeID, Employee, Shift, ShiftState } from './models';
 
 
-declare const DEV: boolean;
+declare const GENERATE_MOCKING: boolean;
 
-let obj;
+type DateRange = [Date, Date];
 
-// if (DEV) {
+interface SigBase {
+  type: string;
+  getShiftsInRange: (range: DateRange) => Promise<ShiftsResponse>;
+  getShiftsByEmployeeInRange: (employeeId: EmployeeID, range: DateRange) => Promise<EmployeeShiftsResponse>;
+}
+
+interface Map<T> {
+  [id: string]: T;
+}
+
+interface ShiftsResponse {
+  shifts: Shift[];
+  employees: Map<Employee>;
+  employeeIds: EmployeeID[];
+}
+
+interface EmployeeShiftsResponse {
+  employee: Employee;
+  shifts: Shift[];
+}
+
+interface SigMocking extends SigBase {
+  type: 'mocking';
+  data: any;
+  initializeData: (date: Date) => Promise<void>;
+}
+
+interface SigFetch extends SigBase {
+  type: 'fetch';
+}
+
+type Sig = SigMocking | SigFetch;
+
+let obj: Sig;
+
+console.log('MOCKING?', GENERATE_MOCKING);
+if (GENERATE_MOCKING) {
   let data = null;
 
   obj = {
+    type: 'mocking',
+    data,
     async initializeData(date = new Date()) {
       data = require('./mocking').generateData(date);
     },
-    async getShiftsInRange([minDate, maxDate]: [Date, Date]): Promise<{shifts: Shift[], employees: {[id: string]: Employee}, employeeIds: EmployeeID[]}> {
+    async getShiftsInRange([minDate, maxDate]: DateRange): Promise<ShiftsResponse> {
       if (data == null) throw new Error('data not initialized');
       const { shifts, employees } = data;
       const filteredShifts: Shift[] = [];
@@ -32,7 +70,7 @@ let obj;
       }
       return { shifts: filteredShifts, employees: filteredEmployees, employeeIds };
     },
-    async getShiftsByEmployeeInRange(employeeId: EmployeeID, [minDate, maxDate]: [Date, Date]): Promise<{employee: Employee, shifts: Shift[]}> {
+    async getShiftsByEmployeeInRange(employeeId: EmployeeID, [minDate, maxDate]: DateRange): Promise<EmployeeShiftsResponse> {
       if (data == null) throw new Error('data not initialized');
       const { shifts, employees } = data;
       const employee = employees[employeeId];
@@ -45,9 +83,26 @@ let obj;
       return {shifts: filteredShifts, employee};
     },
   };
-// } else {
-// 
-// }
+} else {
+  obj = {
+    type: 'fetch',
+    async getShiftsInRange([minDate, maxDate]: DateRange) {
+      const url = new URL(`/data/shifts`, location.origin);
+      url.searchParams.set('minDate', minDate.toISOString());
+      url.searchParams.set('maxDate', minDate.toISOString());
+      const res = await fetch(url.toString());
+      return await res.json();
+    },
+    async getShiftsByEmployeeInRange(employeeId: EmployeeID, [minDate, maxDate]: DateRange) {
+      const url = new URL(`/data/shifts`, location.origin);
+      url.searchParams.set('minDate', minDate.toISOString());
+      url.searchParams.set('maxDate', minDate.toISOString());
+      url.searchParams.set('employee', employeeId);
+      const res = await fetch(url.toString());
+      return await res.json();
+    },
+  }
+}
 
 async function get(key) {
   const res = await fetch(`data/${key}.json`);
@@ -55,6 +110,7 @@ async function get(key) {
   return json;
 }
 
+/*
 Object.assign(obj, {
   data: {
     shifts: get('shifts').then(arr => {
@@ -123,6 +179,7 @@ Object.assign(obj, {
     return {employeeIds, employees, shifts};
   }
 });
+*/
 
 function sortBy(arr) {
   return function (a, b) {

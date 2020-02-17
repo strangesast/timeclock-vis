@@ -27,7 +27,7 @@ class ShiftComponentType(str, Enum):
 
 
 async def main():
-    HOST = '192.168.86.35'
+    HOST = '0.0.0.0'
     mongo_client = motor.motor_asyncio.AsyncIOMotorClient(f'mongodb://user:password@{HOST}:27017')
 
     args = {

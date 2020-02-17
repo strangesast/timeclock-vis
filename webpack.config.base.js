@@ -1,5 +1,7 @@
+const yn = require('yn');
 const WorkerPlugin = require('worker-plugin');
 const HtmlWebpackPlugin = require('html-webpack-plugin')
+const { DefinePlugin } = require('webpack');
 
 const package = require('./package.json')
 
@@ -41,6 +43,9 @@ module.exports = {
     }),
     new WorkerPlugin({
       globalObject: 'self',
+    }),
+    new DefinePlugin({
+      GENERATE_MOCKING: yn(process.env.GENERATE_MOCKING, {default: false}),
     }),
   ],
   module: {

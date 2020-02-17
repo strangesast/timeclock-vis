@@ -137,3 +137,7 @@ export function inFieldOfView([start, end], [fromDate, toDate]): boolean {
   if (start < fromDate && end > toDate) return true;
   return false;
 }
+
+export function centerOnDate(date: Date, hoursWidth = 8): [Date, Date] {
+  return [addHours(date, -hoursWidth / 2), addHours(date, hoursWidth / 2)];
+}

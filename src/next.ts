@@ -5,6 +5,7 @@ import { formatDuration, formatTime, inFieldOfView, throttle, employeeColorScale
 import { ShiftState, Shift, Employee, ShiftComponent, ShiftComponentType, EmployeeID, TranslateExtent } from './models';
 import * as Comlink from 'comlink';
 
+declare const GENERATE_MOCKING: boolean;
 const LOCALE = 'en';
 const defaultExtent: [[number, number], [number, number]] = [[-Infinity,-Infinity], [Infinity, Infinity]];
 
@@ -41,11 +42,17 @@ drawButton('Reset', [120, 36])
   .on('click', () => svg.transition().duration(1000).call(zoom.transform, d3.zoomIdentity));
 
 (async function() {
-  const now = d3.timeWeek.floor(new Date());
-  now.setDate(now.getDate() + 3);
-  now.setHours(14, 22, 0, 0);
 
-  await worker.initializeData(now);
+  let now;
+  if (GENERATE_MOCKING) {
+    now = d3.timeWeek.floor(new Date());
+    now.setDate(now.getDate() + 3);
+    now.setHours(14, 22, 0, 0);
+  
+    await worker.initializeData(now);
+  } else {
+    now = new Date();
+  }
   
   const today = d3.timeDay.floor(new Date(now));
   const tomorrow = new Date(today);

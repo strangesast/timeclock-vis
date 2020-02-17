@@ -1,6 +1,5 @@
 const path = require('path');
 const merge = require('webpack-merge');
-const {DefinePlugin} = require('webpack');
 const CopyPlugin = require('copy-webpack-plugin');
 const baseConfig = require('./webpack.config.base.js');
 const {BundleAnalyzerPlugin} = require('webpack-bundle-analyzer');
@@ -8,9 +7,6 @@ const {BundleAnalyzerPlugin} = require('webpack-bundle-analyzer');
 module.exports = merge(baseConfig, {
   mode: 'development',
   plugins: [
-    new DefinePlugin({
-    	DEV: true,
-    }),
     new BundleAnalyzerPlugin({analyzerMode: 'static', openAnalyzer: false}),
     new CopyPlugin([
       {from: 'icons', to: 'icons'},
