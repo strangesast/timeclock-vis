@@ -17,7 +17,7 @@ branches:
 
 os:
   - linux
-  - windows
+#  - windows
 
 cache:
   directories:
