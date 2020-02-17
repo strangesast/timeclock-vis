@@ -1,5 +1,5 @@
 import * as d3 from 'd3';
-import { Observable, Subject, timer } from 'rxjs';
+import { Observable, BehaviorSubject, timer } from 'rxjs';
 import { switchMap, filter, map, scan, startWith, audit, auditTime, throttleTime } from 'rxjs/operators';
 import { formatDuration, formatTime, inFieldOfView, throttle, employeeColorScale, debounce } from './util';
 import { ShiftState, Shift, Employee, ShiftComponent, ShiftComponentType, EmployeeID, TranslateExtent } from './models';
@@ -24,8 +24,10 @@ const step = 64;
 const worker = Comlink.wrap(new Worker('./data.worker.ts', { type: 'module' })) as any;
 const svg: d3.Selection<SVGElement, {}, HTMLElement, any> = d3.select('svg');
 const margin = {left: 10, right: 10, top: 80, bottom: 40};
-svg.append('rect').classed('background', true).attr('height', '100%').attr('width', '100%');
-svg.append('g').classed('shifts', true).attr('transform', `translate(0,${margin.top})`);
+// svg.append('rect').classed('background', true).attr('height', '100%').attr('width', '100%');
+// svg.append('rect').classed('active', true).attr('height', '100%');
+// svg.append('g').classed('shifts', true).attr('transform', `translate(0,${margin.top})`);
+svg.select('g.shifts').attr('transform', `translate(0,${margin.top})`);
 
 
 updateSize();
@@ -74,29 +76,33 @@ function byTime([minDate, maxDate]) {
   bottomAxis = d3.axisBottom(xScale);
 
   let s;
-  if ((s = svg.select('g.axis.top')).empty()) {
-    s = svg.append('g').classed('axis top', true);
+  if ((s = svg.select('g.axis').select('g.axis.top')).empty()) {
+    s = svg.select('g.axis').append('g').classed('axis top', true);
   }
   s.call(topAxis);
 
-  if ((s = svg.select('g.axis.bottom')).empty()) {
-    s = svg.append('g').classed('axis bottom', true);
+  if ((s = svg.select('g.axis').select('g.axis.bottom')).empty()) {
+    s = svg.select('g.axis').append('g').classed('axis bottom', true);
   }
   s.call(bottomAxis);
  
   let dateAxis;
-  if (dateAxis = svg.select('g.axis.date')) {
-    dateAxis = svg.append('g').classed('axis date', true);
+  if (dateAxis = svg.select('g.axis').select('g.axis.date')) {
+    dateAxis = svg.select('g.axis').append('g').classed('axis date', true);
   }
 
-  const updated = new Subject<[Date, Date]>();
+  let lastDomain = [minDate, maxDate];
+  const updated = new BehaviorSubject(lastDomain);
 
   const o = updated.pipe(
     map(arg => [arg]), // should not refresh when minDate > lastMinDate && maxDate < lastMaxDate
   );
   const sub = fancy(o, [[minDate, maxDate]], worker.getShiftsInRange.bind(worker))
-    .subscribe(({shifts, employeeIds, employees}) =>
-      draw(shifts, employeeIds, employees));
+    .subscribe(result => {
+      const [{shifts, employeeIds, employees}, args] = result as any;
+      ([lastDomain] = args);
+      draw(shifts, employeeIds, employees)
+    });
 
   drawAxis();
 
@@ -109,9 +115,12 @@ function byTime([minDate, maxDate]) {
 
     const t = d3.transition().duration(500);
 
+    const [a, b] = lastDomain.map(d => xScale(d));
+    svg.select('#clip').select('rect.fg').attr('transform', `translate(${a},0)`).attr('width', b - a).attr('height', '100%');
+ 
     if (i == 0) {
       i = 1;
-      svg.select('g.shifts').raise().selectAll<SVGElement, Shift>('g.shift').data(shifts, d => d.id)
+      svg.select('g.shifts').selectAll<SVGElement, Shift>('g.shift').data(shifts, d => d.id)
         .join(
           enter => enter.append('g')
             .call(drawShift, bandwidth)
@@ -123,6 +132,7 @@ function byTime([minDate, maxDate]) {
                 .attr('fill', d => d.fill.toString())
                 .attr('stroke', d => d.fill.toString())
               )
+              .call(s => s.select('text.time.end').attr('x', d => d.w - 4))
               .each(filterShiftComponentTimeVisibility),
             )
             .each(function (d) {
@@ -153,6 +163,8 @@ function byTime([minDate, maxDate]) {
                   .attr('fill', d => d.fill.toString())
                   .attr('stroke', d => d.fill.toString())
                 )
+                .call(s => s.select('text.time.start').attr('x', 4))
+                .call(s => s.select('text.time.end').attr('x', d => d.w - 4))
                 .each(filterShiftComponentTimeVisibility)
             ),
           exit => exit.attr('opacity', 1).transition(t).attr('opacity', 0).remove(),
@@ -176,6 +188,7 @@ function byTime([minDate, maxDate]) {
                 .attr('fill', d => d.fill.toString())
                 .attr('stroke', d => d.fill.toString())
               )
+              .call(s => s.select('text.time.end').attr('x', d => d.w - 4))
               .each(filterShiftComponentTimeVisibility),
             )
             .call(s => s.attr('opacity', 0).transition(t).delay(200).attr('opacity', 1)),
@@ -197,6 +210,7 @@ function byTime([minDate, maxDate]) {
                   .attr('fill', d => d.fill.toString())
                   .attr('stroke', d => d.fill.toString())
                 )
+              .call(s => s.select('text.time.end').attr('x', d => d.w - 4))
                 .each(filterShiftComponentTimeVisibility)
             ),
           exit => exit.attr('opacity', 1).transition(t).attr('opacity', 0).remove(),
@@ -227,6 +241,10 @@ function byTime([minDate, maxDate]) {
     topAxis = topAxis.scale(xScale);
     bottomAxis = bottomAxis.scale(xScale);
     drawAxis();
+
+    const [a, b] = lastDomain.map(d => xScale(d));
+    svg.select('#clip').select('rect.fg').attr('transform', `translate(${a},0)`).attr('width', b - a).attr('height', '100%');
+ 
     
     svg.select('g.shifts').selectAll<SVGElement, Shift>('g.shift')
       .each(updatePositions)
@@ -235,6 +253,7 @@ function byTime([minDate, maxDate]) {
       .call(s => s.selectAll<SVGElement, ShiftComponent>('g.group')
         .attr('transform', d => `translate(${d.x},0)`)
         .call(s => s.select('rect').attr('width', d => d.w))
+        .call(s => s.select('text.time.end').attr('x', d => d.w - 4))
         .each(filterShiftComponentTimeVisibility)
       );
     updated.next(xScale.domain());
@@ -271,6 +290,7 @@ function byTime([minDate, maxDate]) {
             .attr('fill', d => d.fill.toString())
             .attr('stroke', d => d.fill.toString())
           )
+          .call(s => s.select('text.time.end').attr('x', d => d.w - 4))
           .each(filterShiftComponentTimeVisibility)
       );
   }
@@ -286,37 +306,30 @@ function byTime([minDate, maxDate]) {
   window.addEventListener('resize', debouncedResized);
 }
 
-function filterShiftComponentTimeVisibility(d) {
-  const {w} = d;
-  const sel = d3.select(this);
-  sel.select('text.time.start')
-    .attr('opacity', w > 120 ? 1 : 0);
-  sel.select('text.time.end')
-    .attr('opacity', w > 200 ? 1 : 0)
-    .attr('x', d => w - 4);
-}
-
 function byEmployee(employeeId, centerDate: Date) {
   let minDate = d3.timeWeek.floor(centerDate);
-  let maxDate = d3.timeWeek.offset(minDate, 1);
+  let maxDate = d3.timeDay.offset(minDate, 8);
 
   const domain = d3.timeDay.range(minDate, maxDate).map(d => d.toISOString().slice(0, 10));
   const j = domain.indexOf(centerDate.toISOString().slice(0, 10));
   yScale = d3.scaleTime();
-  yScale.domain([minDate, maxDate]).range([0, step * 7]);
+  yScale.domain([minDate, maxDate]).range([0, step * 8]);
   yScaleCopy = yScale.copy();
 
   xScale = d3.scaleTime().range([margin.left, width - margin.right]);
   xScaleCopy = xScale.copy();
 
-  const updated = new Subject<[Date, Date]>();
+  let lastDomain = [minDate, maxDate];
+  const updated = new BehaviorSubject(lastDomain);
 
   const sub = fancy(
     updated.pipe(map(v => [employeeId, v])),
     [employeeId, [minDate, maxDate]],
     worker.getShiftsByEmployeeInRange.bind(worker)
-  ).subscribe(({shifts, employee}) =>
-    draw(shifts, employee));
+  ).subscribe(result => {
+    const [{shifts, employee}, args] = result as any;
+    draw(shifts, employee);
+  });
 
   let nameTitle;
   if (nameTitle = svg.select('g.title.block')) {
@@ -361,6 +374,12 @@ function byEmployee(employeeId, centerDate: Date) {
     topAxis.scale(xScale);
     bottomAxis.scale(xScale);
 
+    const [a, b] = lastDomain.map(d => yScale(d));
+    svg.select('#clip').select('rect.fg')
+      .attr('transform', `translate(0,${a})`)
+      .attr('height', b - a)
+      .attr('width', '100%');
+ 
     svg.select('g.axis.top').attr('transform', `translate(0,${margin.top})`).call(topAxis)
       .call(s => s.select('path').remove())
       .call(s => s.selectAll('.tick').select('line').attr('y2', height - margin.top - 40));
@@ -397,6 +416,7 @@ function byEmployee(employeeId, centerDate: Date) {
             .attr('fill', d => d.fill.toString())
             .attr('stroke', d => d.fill.toString())
           )
+          .call(s => s.select('text.time.end').attr('x', d => d.w - 4))
           .each(filterShiftComponentTimeVisibility)
         ),
       update => update
@@ -420,6 +440,7 @@ function byEmployee(employeeId, centerDate: Date) {
             .attr('fill', d => d.fill.toString())
             .attr('stroke', d => d.fill.toString())
           )
+          .call(s => s.select('text.time.end').attr('x', d => d.w - 4))
           .each(filterShiftComponentTimeVisibility)
         ),
       exit => exit.attr('opacity', 1).transition(t).attr('opacity', 0).remove(),
@@ -480,7 +501,14 @@ function byEmployee(employeeId, centerDate: Date) {
     topAxis = topAxis.scale(xScale);
     bottomAxis = bottomAxis.scale(xScale);
     drawAxis();
-    
+
+    const [a, b] = lastDomain.map(d => yScale(d));
+    svg.select('#clip').select('rect.fg')
+      .attr('transform', `translate(0,${a})`)
+      .attr('height', b - a)
+      .attr('width', '100%');
+ 
+ 
     svg.select('g.shifts')
       .selectAll<SVGElement, Shift>('g.shift')
       .each(updatePositions)
@@ -493,6 +521,7 @@ function byEmployee(employeeId, centerDate: Date) {
           .attr('fill', d => d.fill.toString())
           .attr('stroke', d => d.fill.toString())
         )
+        .call(s => s.select('text.time.end').attr('x', d => d.w - 4))
         .each(filterShiftComponentTimeVisibility)
       );
   }
@@ -537,6 +566,7 @@ function byEmployee(employeeId, centerDate: Date) {
           .attr('fill', d => d.fill.toString())
           .attr('stroke', d => d.fill.toString())
         )
+        .call(s => s.select('text.time.end').attr('x', d => d.w - 4))
         .each(filterShiftComponentTimeVisibility)
       );
 
@@ -551,6 +581,15 @@ function byEmployee(employeeId, centerDate: Date) {
   }
 
   window.addEventListener('resize', debouncedResized);
+}
+
+function filterShiftComponentTimeVisibility(d) {
+  const {w} = d;
+  const sel = d3.select(this);
+  sel.select('text.time.start')
+    .attr('opacity', w > 120 ? 1 : 0);
+  sel.select('text.time.end')
+    .attr('opacity', w > 200 ? 1 : 0);
 }
 
 function drawStrokeAnimation(sel, colors: string[]) {
@@ -691,14 +730,15 @@ function drawAxis() {
     });
 }
 
-function fancy<T1 extends Array<any>, T2>(input: Observable<T1>, first: T1, fn: (...args: T1[]) => Promise<T2>) {
+function fancy<T1 extends Array<any>, T2>(input: Observable<T1>, first: T1, fn: (...args: T1[]) => Promise<[T2, T1]>) {
   return input.pipe(
-    throttleTime(100), // start new fetch new range at most every .1s
-    startWith(first),
+    auditTime(200),
+    // throttleTime(200), // start new fetch new range at most every .1s
+    // startWith(first),
     scan(([_, index], value) => [value, index + 1], [null, -1]), // yuck
-    switchMap(([args, index]: [T1, number]) => fn(...args).then(result => [result, index])),
-    audit(([value, index]) => timer(index > 0 ? 400 : 0)), // only update screen at most once a second
-    map(([value, index]) => value),
+    switchMap(([args, index]: [T1, number]) => fn(...args).then(result => [result, index, args])),
+    audit(([value, index]) => timer(index > 0 ? 800 : 0)), // only update screen at most once a second
+    map(([value, index, args]) => [value, args]),
   );
 }
 
