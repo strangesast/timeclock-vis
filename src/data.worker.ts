@@ -1,46 +1,11 @@
 import * as Comlink from 'comlink';
 import { formatTime, addHours, inFieldOfView } from './util';
-import { EmployeeID, Employee, Shift, ShiftState } from './models';
+import * as models from './models';
 
 
 declare const GENERATE_MOCKING: boolean;
 
-type DateRange = [Date, Date];
-
-interface SigBase {
-  type: string;
-  getShiftsInRange: (range: DateRange) => Promise<ShiftsResponse>;
-  getShiftsByEmployeeInRange: (employeeId: EmployeeID, range: DateRange) => Promise<EmployeeShiftsResponse>;
-}
-
-interface Map<T> {
-  [id: string]: T;
-}
-
-interface ShiftsResponse {
-  shifts: Shift[];
-  employees: Map<Employee>;
-  employeeIds: EmployeeID[];
-}
-
-interface EmployeeShiftsResponse {
-  employee: Employee;
-  shifts: Shift[];
-}
-
-interface SigMocking extends SigBase {
-  type: 'mocking';
-  data: any;
-  initializeData: (date: Date) => Promise<void>;
-}
-
-interface SigFetch extends SigBase {
-  type: 'fetch';
-}
-
-type Sig = SigMocking | SigFetch;
-
-let obj: Sig;
+let obj: models.Sig;
 
 console.log('MOCKING?', GENERATE_MOCKING);
 if (GENERATE_MOCKING) {
@@ -52,10 +17,10 @@ if (GENERATE_MOCKING) {
     async initializeData(date = new Date()) {
       data = require('./mocking').generateData(date);
     },
-    async getShiftsInRange([minDate, maxDate]: DateRange): Promise<ShiftsResponse> {
+    async getShiftsInRange([minDate, maxDate]: models.DateRange): Promise<models.ShiftsResponse> {
       if (data == null) throw new Error('data not initialized');
       const { shifts, employees } = data;
-      const filteredShifts: Shift[] = [];
+      const filteredShifts: models.Shift[] = [];
       const filteredEmployees = {};
       const employeeIds = [];
       for (const shift of shifts) {
@@ -70,36 +35,40 @@ if (GENERATE_MOCKING) {
       }
       return { shifts: filteredShifts, employees: filteredEmployees, employeeIds };
     },
-    async getShiftsByEmployeeInRange(employeeId: EmployeeID, [minDate, maxDate]: DateRange): Promise<EmployeeShiftsResponse> {
+    async getShiftsByEmployeeInRange(employeeId: models.EmployeeID, [minDate, maxDate]: models.DateRange): Promise<models.ShiftsResponse> {
       if (data == null) throw new Error('data not initialized');
       const { shifts, employees } = data;
       const employee = employees[employeeId];
-      const filteredShifts: Shift[] = [];
+      const filteredShifts: models.Shift[] = [];
       for (const shift of shifts) {
         if (shift.employee.id == employeeId && inFieldOfView([shift.start, shift.end], [minDate, maxDate])) {
           filteredShifts.push(shift);
         }
       }
-      return {shifts: filteredShifts, employee};
+      return {shifts: filteredShifts, employees: {[employeeId]: employee}, employeeIds: [employeeId]};
     },
   };
 } else {
   obj = {
     type: 'fetch',
-    async getShiftsInRange([minDate, maxDate]: DateRange) {
+    async getShiftsInRange([minDate, maxDate]: models.DateRange) {
       const url = new URL(`/data/shifts`, location.origin);
       url.searchParams.set('minDate', minDate.toISOString());
       url.searchParams.set('maxDate', minDate.toISOString());
       const res = await fetch(url.toString());
-      return await res.json();
+      const content = await res.json();
+      interpretResponse(content);
+      return content;
     },
-    async getShiftsByEmployeeInRange(employeeId: EmployeeID, [minDate, maxDate]: DateRange) {
+    async getShiftsByEmployeeInRange(employeeId: models.EmployeeID, [minDate, maxDate]: models.DateRange) {
       const url = new URL(`/data/shifts`, location.origin);
       url.searchParams.set('minDate', minDate.toISOString());
       url.searchParams.set('maxDate', minDate.toISOString());
       url.searchParams.set('employee', employeeId);
       const res = await fetch(url.toString());
-      return await res.json();
+      const content = await res.json();
+      interpretResponse(content);
+      return content;
     },
   }
 }
@@ -188,6 +157,35 @@ function sortBy(arr) {
       if (a[key] < b[key]) return -1;
     }
     return 0;
+  }
+}
+
+function interpretResponse(content) {
+  const {shifts, employees, employeeIds} = content;
+  for (const shift of shifts) {
+    shift.employee = employees[shift.employee];
+    if (typeof shift.expectedDuration !== "number") {
+      shift.expectedDuration = 2.88e7;
+    }
+    if (typeof shift.start === 'string') {
+      shift.start = new Date(shift.start);
+    }
+    if (typeof shift.end === 'string') {
+      shift.end = new Date(shift.end);
+    }
+    if (Array.isArray(shift.components)) {
+      for (const comp of shift.components) {
+        if (typeof comp.start === 'string') {
+          comp.start = new Date(comp.start);
+        }
+        if (typeof comp.end === 'string') {
+          comp.end = new Date(comp.end);
+        }
+      }
+    }
+  }
+  for (const employee of Object.values(employees) as any[]) {
+    employee.name = employee.Name + ' ' + employee.LastName;
   }
 }
 

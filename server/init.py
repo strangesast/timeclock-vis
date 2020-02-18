@@ -1,29 +1,13 @@
 import asyncio
 import aiomysql
+from typing import List
 from pprint import pprint
 import motor.motor_asyncio
 from enum import Enum, IntEnum
 from aioitertools import groupby, enumerate
 from datetime import timedelta, datetime
 from itertools import zip_longest, islice
-
-
-class EmployeeShiftColor(IntEnum):
-    BLUE = 0
-    GREEN = 1
-    RED = 2
-    ORANGE = 3
-    PINK = 4
-
-
-class ShiftState(str, Enum):
-    Complete = 'complete'
-    Incomplete = 'incomplete'
-
-
-class ShiftComponentType(str, Enum):
-    Actual = 'actual'
-    Projected = 'projected'
+import models
 
 
 async def main():
@@ -44,7 +28,7 @@ async def main():
 
     employees = {}
     async for i, employee in enumerate(wrap_fetchone(cur)):
-        color = EmployeeShiftColor(i % len(EmployeeShiftColor))
+        color = models.EmployeeShiftColor(i % len(models.EmployeeShiftColor))
         employee['id'] = str(employee['id'])
         employee['Color'] = color
         employees[employee['id']] = employee;
@@ -76,20 +60,27 @@ async def main():
         employeeId = str(employeeId)
         employee = employees[employeeId]
         for seq in seq_grouper(grouper(map(lambda d: d and d['Date'], it))):
-            components = []
+            components: List[ShiftComponent] = []
             cum_duration = 0
             for start, end in seq:
                 if end is None:
-                    state = ShiftState.Incomplete
+                    state = models.ShiftState.Incomplete
                     duration = None
                 else:
-                    state = ShiftState.Complete
+                    state = models.ShiftState.Complete
                     duration = int((end - start).total_seconds() * 1000)
                     cum_duration += duration
-                component = {'start': start, 'end': end, 'duration': duration, 'state': state, 'color': employee['Color'].value}
+                component = {
+                    'start': start,
+                    'end': end,
+                    'duration': duration,
+                    'state': state,
+                    'color': employee['Color'].value
+                }
                 components.append(component)
+            last_shift_id += 1
             shift = {
-                'id': str(++last_shift_id),
+                'id': str(last_shift_id),
                 'employee': employeeId,
                 'components': components,
                 'duration': cum_duration,

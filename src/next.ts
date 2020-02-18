@@ -51,7 +51,7 @@ drawButton('Reset', [120, 36])
   
     await worker.initializeData(now);
   } else {
-    now = new Date();
+    now = new Date(2020, 1, 3, 14, 22);
   }
   
   const today = d3.timeDay.floor(new Date(now));
@@ -235,7 +235,7 @@ function byTime([minDate, maxDate]) {
       const index = comp.type == ShiftComponentType.Projected ? 1 : 0;
       comp.fill = d3.color(employeeColorScale(shift.employee.id)[index]);
       comp.x = xScale(comp.start);
-      comp.w = xScale(comp.end) - comp.x;
+      comp.w = Math.max(xScale(comp.end) - comp.x, 0);
     }
     shift.y = yScale(shift.employee.id);
     const [a, b] = [shift.start, shift.end].map(xScale);
@@ -334,7 +334,8 @@ function byEmployee(employeeId, centerDate: Date) {
     [employeeId, [minDate, maxDate]],
     worker.getShiftsByEmployeeInRange.bind(worker)
   ).subscribe(result => {
-    const [{shifts, employee}, args] = result as any;
+    const [{shifts, employees, employeeIds}, args] = result as any;
+    const employee = employees[employeeIds[0]]; // uh
     draw(shifts, employee);
   });
 
@@ -471,7 +472,7 @@ function byEmployee(employeeId, centerDate: Date) {
       const index = comp.type == ShiftComponentType.Projected ? 1 : 0;
       comp.fill = d3.color(employeeColorScale(shift.employee.id)[index]);
       comp.x = xScale(normalizeDate(comp.start));
-      comp.w = xScale(normalizeDate(comp.end)) - comp.x;
+      comp.w = Math.max(xScale(normalizeDate(comp.end)) - comp.x, 0);
     }
     shift.y = yScale(d3.timeDay.floor(shift.start));
     shift.x = Math.max(xScale(normalizeDate(shift.start)), 0);

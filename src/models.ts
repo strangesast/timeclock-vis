@@ -73,3 +73,33 @@ export interface Shift {
 }
 
 export type TranslateExtent = [[number, number], [number, number]];
+
+export type DateRange = [Date, Date];
+
+interface SigBase {
+  type: string;
+  getShiftsInRange: (range: DateRange) => Promise<ShiftsResponse>;
+  getShiftsByEmployeeInRange: (employeeId: EmployeeID, range: DateRange) => Promise<ShiftsResponse>;
+}
+
+interface Map<T> {
+  [id: string]: T;
+}
+
+export interface ShiftsResponse {
+  shifts: Shift[];
+  employees: Map<Employee>;
+  employeeIds: EmployeeID[];
+}
+
+interface SigMocking extends SigBase {
+  type: 'mocking';
+  data: any;
+  initializeData: (date: Date) => Promise<void>;
+}
+
+interface SigFetch extends SigBase {
+  type: 'fetch';
+}
+
+export type Sig = SigMocking | SigFetch;

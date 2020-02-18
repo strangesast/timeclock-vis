@@ -6,6 +6,7 @@ from datetime import datetime
 import motor.motor_asyncio
 from bson.json_util import dumps
 from aiohttp import web, WSCloseCode
+import models
 
 routes = web.RouteTableDef()
 
@@ -40,21 +41,37 @@ async def index(request):
         except ValueError as e:
             return web.HTTPBadRequest(body='invalid employee id')
         query['employee'] = employee_id
-
-    print(query)
-
         
     cursor = request.app['db'].timeclock.shifts.find(query, {"_id": 0}).sort('_id', pymongo.ASCENDING)
     shifts = await cursor.to_list(None)
 
-    employee_ids = list(set(s['employee'] for s in shifts))
+    employee_ids = sorted(list(set(s['employee'] for s in shifts)))
 
     cursor = request.app['db'].timeclock.employees.find({'id': {'$in': employee_ids}}, {"_id": 0})
-    employees = await cursor.to_list(None)
 
-    return json_response({'shifts': shifts, 'employeeIds': employee_ids, 'employees': employees})
+    employees = {};
+    async for employee in cursor:
+        employees[employee['id']] = employee;
+
+    #interface ShiftsResponse {
+    #  shifts: Shift[];
+    #  employees: Map<Employee>;
+    #  employeeIds: EmployeeID[];
+    #}
+    #export interface EmployeeShiftsResponse {
+    #  employee: Employee;
+    #  shifts: Shift[];
+    #}
+
+    response: models.EmployeeShiftsResponse = {
+        'shifts': shifts,
+        'employeeIds': employee_ids,
+        'employees': employees,
+    }
+    return json_response(response)
     # need encoder
     #return web.json_response({'shifts': shifts})
+
 
 def json_response(d):
     return web.Response(text=json.dumps(d, default=default))
