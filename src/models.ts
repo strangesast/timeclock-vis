@@ -37,6 +37,8 @@ interface BaseShiftComponent {
   fill: d3.Color;
   start: Date;
   end: Date;
+  startNorm?: Date;
+  endNorm?: Date;
   duration: number;
   showTime: boolean;
   employeeId: EmployeeID; // needed for fill (gay)
@@ -60,6 +62,7 @@ export interface Shift {
     name: string;
   }
   start: Date; // start of first component (actual or projected)
+  startNorm?: Date; // start of first component (actual or projected)
   end: Date; // end of last component (actual or projected)
   duration: number; // total so far
   expectedDuration: number;

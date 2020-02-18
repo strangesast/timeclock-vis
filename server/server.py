@@ -4,7 +4,7 @@ import asyncio
 from functools import reduce
 import weakref
 import pymongo
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 import motor.motor_asyncio
 from bson.json_util import dumps
 from aiohttp import web, WSCloseCode
@@ -106,22 +106,32 @@ async def get_shifts(request):
     employees_list = [{k: v if (v := empl.get(k)) != 'None' else None for k in default_employee_props}
             for empl in employees_list]
 
-    min_date = q.get('minDate') or default_min_date;
-    max_date = q.get('maxDate') or default_max_date;
+    min_gap = timedelta(hours=12)
+
+    min_date = d - timedelta(hours=10) if (d := q.get('minDate')) else default_min_date;
+    max_date = d - timedelta(hours=10) if (d := q.get('maxDate')) else default_max_date;
+    gap = max_date - min_date
+
+    if gap < min_gap:
+      mid_date = min_date + gap / 2
+      min_date = mid_date - min_gap / 2;
+      max_date = mid_date + min_gap / 2;
 
     included_employee_ids = set()
+    print(f'{min_date=}')
+    print(f'{max_date=}')
     employee_timecards = await request.app['proxy'].GetTimecards(employee_ids, min_date, max_date, False)
     shifts = []
     for each in employee_timecards:
         employee_id, timecards = each['EmployeeId'], each['Timecards']
-        included_employee_ids.add(employee_id)
         for components in merge_nearby_shifts(parse_timecards(employee_id, timecards)):
+            included_employee_ids.add(employee_id)
             start_date = components[0][0]
             end_date = components[-1][1]
             id = f'{employee_id}_{start_date.timestamp():.0f}'
             is_complete = end_date is not None
             shift_state = models.ShiftState.Complete if is_complete else models.ShiftState.Incomplete
-            total_duration = reduce(lambda acc, cv: cv[1] - cv[0] + acc, components, timedelta()) if not is_complete else None
+            total_duration = reduce(lambda acc, cv: cv[1] - cv[0] + acc, components, timedelta()) if is_complete else None
             components = [{'start': start, 'end': end, 'duration': end and end - start, 'id': f'{employee_id}_{start.timestamp():.0f}'}
                     for start, end in components]
             shift = {
@@ -139,13 +149,14 @@ async def get_shifts(request):
     employee_ids = []
     for employee in employees_list:
         employee_id = employee['Id']
+        key = str(employee_id)
         if employee_id in included_employee_ids:
-            employees[employee_id] = {
-                'id': str(employee_id),
+            employees[key] = {
+                'id': key,
                 'name': f'{employee["Name"]} {employee["LastName"]}',
                 'color': models.EmployeeShiftColor(employee_id % len(models.EmployeeShiftColor)),
             }
-            employee_ids.append(str(employee_id))
+            employee_ids.append(key)
 
     return json_response({
         'employees': employees,
@@ -236,6 +247,10 @@ def merge_nearby_shifts(it):
 
     if len(components):
         yield components
+
+
+def utc_to_local(dt: datetime):
+    return dt.replace(tzinfo=timezone.utc).astimezone(tz=None)
 
 
 def parse_qs(query):

@@ -56,6 +56,9 @@ if (GENERATE_MOCKING) {
       url.searchParams.set('minDate', minDate.toISOString());
       url.searchParams.set('maxDate', maxDate.toISOString());
       const res = await fetch(url.toString());
+      if (res.status < 200 || res.status >= 400) {
+        throw new Error(`failed to fetch shifts: ${res.statusText}`);
+      }
       const content = await res.json();
       interpretResponse(content);
       return content;
@@ -66,6 +69,9 @@ if (GENERATE_MOCKING) {
       url.searchParams.set('maxDate', maxDate.toISOString());
       url.searchParams.set('employee', employeeId);
       const res = await fetch(url.toString());
+      if (res.status < 200 || res.status >= 400) {
+        throw new Error(`failed to fetch shifts: ${res.statusText}`);
+      }
       const content = await res.json();
       interpretResponse(content);
       return content;
@@ -164,6 +170,7 @@ function interpretResponse(content) {
   const {shifts, employees, employeeIds} = content;
   for (const shift of shifts) {
     shift.employee = employees[shift.employee];
+    shift.started = true;
     if (typeof shift.expectedDuration !== "number") {
       shift.expectedDuration = 2.88e7;
     }
@@ -175,6 +182,7 @@ function interpretResponse(content) {
     }
     if (Array.isArray(shift.components)) {
       for (const comp of shift.components) {
+        comp.showTime = true;
         if (typeof comp.start === 'string') {
           comp.start = new Date(comp.start);
         }
@@ -183,9 +191,6 @@ function interpretResponse(content) {
         }
       }
     }
-  }
-  for (const employee of Object.values(employees) as any[]) {
-    employee.name = employee.Name + ' ' + employee.LastName;
   }
 }
 

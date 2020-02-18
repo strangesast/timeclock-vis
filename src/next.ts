@@ -63,7 +63,6 @@ drawButton('Reset', [120, 36])
   const [minDate, maxDate] = [start, tomorrow];
 
   byTime([minDate, maxDate]);
-  console.log([minDate, maxDate]);
 })();
 
 function updateSize() {
@@ -356,16 +355,16 @@ function byEmployee(employeeId, centerDate: Date) {
   function draw(shifts: Shift[], employee: Employee) {
     const t = d3.transition().duration(500);
 
-     // uggggly
+    // uggggly
     const [minTime, maxTime] = d3.extent(shifts
       .reduce((acc, s) => {
+        calculateNorms(s);
         for (const comp of s.components) {
-          acc.push(comp.start);
-          acc.push(comp.end);
+          acc.push(comp.startNorm);
+          acc.push(comp.endNorm);
         }
         return acc;
-      }, [] as Date[])
-      .map(normalizeDate));
+      }, [] as Date[]));
 
     const [minx, maxx] = xScale.range();
     const extent: [[number, number], [number,number]] = [
@@ -468,15 +467,35 @@ function byEmployee(employeeId, centerDate: Date) {
     return d;
   }
 
+  function normalizeDatePair([d0, d1]: [Date, Date]) {
+    d0 = new Date(d0);
+    d0.setFullYear(2000);
+    d0.setMonth(0)
+    d0.setDate(1);
+    d1 = new Date(d1);
+    d1.setFullYear(2000);
+    d1.setMonth(0)
+    d1.setDate(1);
+
+    if (d1 < d0) {
+      d1.setDate(d1.getDate() + 1);
+    }
+
+    return [d0, d1];
+  }
+
+
+
   function updatePositions(shift: Shift) {
+    calculateNorms(shift);
     for (const comp of shift.components) {
       const index = comp.type == ShiftComponentType.Projected ? 1 : 0;
       comp.fill = d3.color(employeeColorScale(shift.employee.id)[index]);
-      comp.x = xScale(normalizeDate(comp.start));
-      comp.w = Math.max(xScale(normalizeDate(comp.end)) - comp.x, 0);
+      comp.x = xScale(comp.startNorm);
+      comp.w = Math.max(xScale(comp.endNorm) - comp.x, 0);
     }
     shift.y = yScale(d3.timeDay.floor(shift.start));
-    shift.x = Math.max(xScale(normalizeDate(shift.start)), 0);
+    shift.x = Math.max(xScale(shift.startNorm), 0);
     return shift;
   }
 
@@ -741,7 +760,7 @@ function drawAxis() {
 
 function fancy<T1 extends Array<any>, T2>(input: Observable<T1>, first: T1, fn: (...args: T1[]) => Promise<[T2, T1]>) {
   return input.pipe(
-    auditTime(200),
+    auditTime(1000),
     // throttleTime(200), // start new fetch new range at most every .1s
     // startWith(first),
     scan(([_, index], value) => [value, index + 1], [null, -1]), // yuck
@@ -749,6 +768,28 @@ function fancy<T1 extends Array<any>, T2>(input: Observable<T1>, first: T1, fn: 
     audit(([value, index]) => timer(index > 0 ? 800 : 0)), // only update screen at most once a second
     map(([value, index, args]) => [value, args]),
   );
+}
+
+function calculateNorms(shift: Shift) {
+  let date;
+  const first = shift.components.length > 0 ? shift.components[0].start : null;
+  date = new Date(shift.start);
+  date.setFullYear(2000);
+  date.setMonth(0);
+  date.setDate(1);
+  shift.startNorm = date;
+  for (const comp of shift.components) {
+    date = new Date(comp.start);
+    date.setFullYear(2000);
+    date.setMonth(0)
+    date.setDate(1 + d3.timeDay.count(first, date));
+    comp.startNorm = date;
+    date = new Date(comp.end);
+    date.setFullYear(2000);
+    date.setMonth(0)
+    date.setDate(1 + d3.timeDay.count(first, date));
+    comp.endNorm = date;
+  }
 }
 
 function formatDateSimple(date: Date): string {
