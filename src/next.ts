@@ -63,6 +63,7 @@ drawButton('Reset', [120, 36])
   const [minDate, maxDate] = [start, tomorrow];
 
   byTime([minDate, maxDate]);
+  console.log([minDate, maxDate]);
 })();
 
 function updateSize() {

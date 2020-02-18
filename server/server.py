@@ -1,6 +1,7 @@
 import os
 import json
 import asyncio
+from functools import reduce
 import weakref
 import pymongo
 from datetime import datetime, date, timedelta
@@ -95,53 +96,56 @@ async def get_shifts(request):
     q = parse_qs(request.query)
     if employee_id := q.get('employee'):
         employees_list = await request.app['proxy'].GetEmployees([employee_id])
-        employee_ids = [empl['Id'] for empl in employees_list]
     else:
         employees_list = await request.app['proxy'].GetAllEmployeesShort()
-        employee_ids = [empl['Id'] for empl in employees_list]
+
+    # must be ints for next api call
+    employee_ids = [empl['Id'] for empl in employees_list]
 
     # proxy returns 'None' for null values
     employees_list = [{k: v if (v := empl.get(k)) != 'None' else None for k in default_employee_props}
             for empl in employees_list]
-    employees = dict(zip(employee_ids, employees_list))
 
     min_date = q.get('minDate') or default_min_date;
     max_date = q.get('maxDate') or default_max_date;
 
+    included_employee_ids = set()
     employee_timecards = await request.app['proxy'].GetTimecards(employee_ids, min_date, max_date, False)
     shifts = []
     for each in employee_timecards:
         employee_id, timecards = each['EmployeeId'], each['Timecards']
-        employee_id = str(employee_id)
+        included_employee_ids.add(employee_id)
         for components in merge_nearby_shifts(parse_timecards(employee_id, timecards)):
-            start_date = components[0]['StartDate']
-            end_date = components[-1]['EndDate']
+            start_date = components[0][0]
+            end_date = components[-1][1]
             id = f'{employee_id}_{start_date.timestamp():.0f}'
             is_complete = end_date is not None
             shift_state = models.ShiftState.Complete if is_complete else models.ShiftState.Incomplete
-            total_duration = timedelta()
-            for component in components:
-                if component['EndDate'] is not None:
-                    delta = component['EndDate'] - component['StartDate']
-                    component['Duration'] = delta
-                    total_duration += delta
+            total_duration = reduce(lambda acc, cv: cv[1] - cv[0] + acc, components, timedelta()) if not is_complete else None
+            components = [{'start': start, 'end': end, 'duration': end and end - start, 'id': f'{employee_id}_{start.timestamp():.0f}'}
+                    for start, end in components]
             shift = {
-                'Id': id,
-                'Employee': employee_id,
-                'Components': components,
-                'StartDate': start_date,
-                'EndDate': end_date,
-                'Duration': total_duration if is_complete else None,
-                'State': shift_state,
+                'id': id,
+                'employee': str(employee_id),
+                'components': components,
+                'start': start_date,
+                'end': end_date,
+                'duration': total_duration,
+                'state': shift_state,
                 }
             shifts.append(shift)
 
-    employee_ids = list(map(str, employee_ids))
-
-    for employee in employees.values():
+    employees = {}
+    employee_ids = []
+    for employee in employees_list:
         employee_id = employee['Id']
-        employee['Id'] = str(employee_id)
-        employee['Color'] = models.EmployeeShiftColor(employee_id % len(models.EmployeeShiftColor))
+        if employee_id in included_employee_ids:
+            employees[employee_id] = {
+                'id': str(employee_id),
+                'name': f'{employee["Name"]} {employee["LastName"]}',
+                'color': models.EmployeeShiftColor(employee_id % len(models.EmployeeShiftColor)),
+            }
+            employee_ids.append(str(employee_id))
 
     return json_response({
         'employees': employees,
@@ -219,7 +223,7 @@ def merge_nearby_shifts(it):
     last_end = None
     components = []
     for shift in it:
-        start_date, end_date = shift['StartDate'], shift['EndDate']
+        start_date, end_date = shift
         if last_end is not None and start_date - last_end < timedelta(hours=4):
             components.append(shift)
         else:

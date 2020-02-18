@@ -39,16 +39,8 @@ def parse_timecards(employee_id, timecards):
     shifts = []
     timecards = [[punch['OriginalDate'] if (punch := timecard.get(key)) else None for key in ('StartPunch', 'StopPunch')]
             for timecard in timecards]
-    timecards = list(merge_dups(timecards))
-    for start, end in timecards:
-        if start is None:
-            continue
-        shift = {
-                'EmployeeId': employee_id,
-                'Id': f'{employee_id}_{start.timestamp():.0f}',
-                'StartDate': start,
-                'EndDate': end
-                }
-        shifts.append(shift)
+    timecards = merge_dups(timecards)
+    # not sure why start would be None
+    shifts = [(start, end) for start, end in timecards if start is not None]
 
     return shifts

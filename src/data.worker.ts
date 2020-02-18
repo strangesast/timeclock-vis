@@ -54,7 +54,7 @@ if (GENERATE_MOCKING) {
     async getShiftsInRange([minDate, maxDate]: models.DateRange) {
       const url = new URL(`/data/shifts`, location.origin);
       url.searchParams.set('minDate', minDate.toISOString());
-      url.searchParams.set('maxDate', minDate.toISOString());
+      url.searchParams.set('maxDate', maxDate.toISOString());
       const res = await fetch(url.toString());
       const content = await res.json();
       interpretResponse(content);
@@ -63,7 +63,7 @@ if (GENERATE_MOCKING) {
     async getShiftsByEmployeeInRange(employeeId: models.EmployeeID, [minDate, maxDate]: models.DateRange) {
       const url = new URL(`/data/shifts`, location.origin);
       url.searchParams.set('minDate', minDate.toISOString());
-      url.searchParams.set('maxDate', minDate.toISOString());
+      url.searchParams.set('maxDate', maxDate.toISOString());
       url.searchParams.set('employee', employeeId);
       const res = await fetch(url.toString());
       const content = await res.json();
