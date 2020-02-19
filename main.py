@@ -15,7 +15,7 @@ async def get_employees(conn):
             yield row
 
 
-def converter(o):
+def default(o):
     if isinstance(o, datetime):
         return o.isoformat()
 
@@ -29,13 +29,8 @@ async def main():
         async for o in get_employees(conn):
             employees[o['id']] = o
         with open('./data/employees.json', 'w', encoding='utf-8') as f:
-            json.dump(employees, f, ensure_ascii=False, indent=2, default = converter)
+            json.dump(employees, f, ensure_ascii=False, indent=2, default=default)
         
-        #async with conn.cursor(aiomysql.DictCursor) as cur:
-        #    await cur.execute('select id,ClockDate,Date,InsertDate,inf_employee_id from tr_clock order by inf_employee_id,ClockDate');
-        #    last = None
-        #    row = await cur.fetchone()
-
         async with conn.cursor(aiomysql.DictCursor) as cur:
             await cur.execute('''
                 SELECT id,

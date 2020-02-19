@@ -1,9 +1,13 @@
+import os
 import xmlrpc.client
 import asyncio
+from datetime import timedelta
 from aiohttp_xmlrpc.client import ServerProxy
 
 
-def get_async_rpc_connection(host='localhost', port=3003, password='password', username='admin'):
+def get_async_rpc_connection(config):
+    host, port, username, password = [os.environ.get(f'amg_{k}'.upper()) or config.get(k)
+            for k in ['host', 'port', 'username', 'password']]
     loop = asyncio.get_running_loop()
     uri = f'http://{username}:{password}@{host}:{port}/API/Timecard.ashx'
     return ServerProxy(uri, loop=loop)
@@ -33,6 +37,26 @@ def merge_dups(arr):
             # set pair B as pair A
             aa, ab = ba, bb
     yield (aa, ab)
+
+
+def merge_nearby_shifts(it, threshold=timedelta(hours=4)):
+    last_end = None
+    components = []
+    for shift in it:
+        start_date, end_date = shift
+        if last_end is not None and start_date - last_end < threshold:
+            components.append(shift)
+        else:
+            if len(components):
+                yield components
+
+            components = [shift]
+
+        last_end = end_date
+
+    if len(components):
+        yield components
+
 
 
 def parse_timecards(employee_id, timecards):

@@ -10,7 +10,7 @@ import motor.motor_asyncio
 from bson.json_util import dumps
 from aiohttp import web, WSCloseCode
 import models
-from util import get_async_rpc_connection, parse_timecards
+from util import get_async_rpc_connection, parse_timecards, merge_nearby_shifts
 
 routes = web.RouteTableDef()
 EMPLOYEE_IDS = ['50', '53', '71', '61', '82', '73', '55', '72', '66', '62', '69', '67', '80', '79', '57', '51', '70', '74', '54', '56', '58', '59', '64', '65']
@@ -212,12 +212,8 @@ async def main():
     host = '0.0.0.0'
 
     app['db'] = motor.motor_asyncio.AsyncIOMotorClient(f'mongodb://user:password@{host}:27017')
-    app['proxy'] = get_async_rpc_connection(
-        os.environ.get('AMG_HOST') or config['AMG'].get('HOST'),
-        os.environ.get('AMG_PORT') or config['AMG'].get('PORT'),
-        os.environ.get('AMG_PASSWORD') or config['AMG'].get('PASSWORD'),
-        os.environ.get('AMG_USERNAME') or config['AMG'].get('USERNAME'),
-    )
+
+    app['proxy'] = get_async_rpc_connection(config['AMG'])
 
     app.add_routes(routes)
     app.on_shutdown.append(on_shutdown)
@@ -234,25 +230,6 @@ async def main():
     finally:
         print('shutting down')
         await runner.cleanup()
-
-
-def merge_nearby_shifts(it):
-    last_end = None
-    components = []
-    for shift in it:
-        start_date, end_date = shift
-        if last_end is not None and start_date - last_end < timedelta(hours=4):
-            components.append(shift)
-        else:
-            if len(components):
-                yield components
-
-            components = [shift]
-
-        last_end = end_date
-
-    if len(components):
-        yield components
 
 
 def utc_to_local(dt: datetime):
