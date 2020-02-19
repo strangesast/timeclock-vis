@@ -13,6 +13,7 @@ import models
 from util import get_async_rpc_connection, parse_timecards
 
 routes = web.RouteTableDef()
+EMPLOYEE_IDS = ['50', '53', '71', '61', '82', '73', '55', '72', '66', '62', '69', '67', '80', '79', '57', '51', '70', '74', '54', '56', '58', '59', '64', '65']
 
 '''
 @routes.get('/data/shifts')
@@ -144,18 +145,19 @@ async def get_shifts(request):
 
     shifts.sort(key = lambda v: v['start'])
 
-    employee_ids = list(dict.fromkeys(s['employee'] for s in shifts))
+    # for now return the same contents / order of employee ids
+    employee_ids = list(dict.fromkeys(s['employee'] for s in shifts)) if employee_id else EMPLOYEE_IDS
 
     employees = {}
     for employee in employees_list:
         employee_id = employee['Id']
         key = str(employee_id)
-        if employee_id in included_employee_ids:
-            employees[key] = {
-                'id': key,
-                'name': f'{employee["Name"]} {employee["LastName"]}',
-                'color': models.EmployeeShiftColor(employee_id % len(models.EmployeeShiftColor)),
-            }
+        #if employee_id in included_employee_ids:
+        employees[key] = {
+            'id': key,
+            'name': f'{employee["Name"]} {employee["LastName"]}',
+            'color': models.EmployeeShiftColor(employee_id % len(models.EmployeeShiftColor)),
+        }
 
     return json_response({
         'employees': employees,

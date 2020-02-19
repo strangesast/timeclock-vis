@@ -74,11 +74,14 @@ function byTime([minDate, maxDate]) {
   svg.call(zoom = d3.zoom()
     .translateExtent(defaultExtent)
     .scaleExtent([.4, 100])
+    .on('start', zoomStarted)
+    .on('end', zoomEnded)
     .on('zoom', zoomed)
   );
   xScale = d3.scaleTime().domain([minDate, maxDate]).range([margin.left, width - margin.right]);
   xScaleCopy = xScale.copy();
   yScale = d3.scaleOrdinal<number>();
+  yScaleCopy = yScale.copy();
   topAxis = d3.axisTop(xScale);
   bottomAxis = d3.axisBottom(xScale);
 
@@ -113,10 +116,15 @@ function byTime([minDate, maxDate]) {
 
   drawAxis();
 
-  let i = 0;
+  let i = 0; // ugly hack for i > 0 redraws (due to zooming)
+  let lastOffsetY = 0,
+    currentOffset = 0,
+    dy = 0,
+    transform = d3.zoomIdentity;
+
 
   function draw(shifts: Shift[], employeeIds: EmployeeID[], employees: {[id: string]: Employee}) {
-    yScale.domain(employeeIds).range(Array.from(Array(employeeIds.length)).map((_, i) => i * step + rowTextHeight));
+    yScale.domain(employeeIds).range(Array.from(Array(employeeIds.length)).map((_, i) => i * step));
 
     shifts.forEach(updatePositions);
 
@@ -124,7 +132,7 @@ function byTime([minDate, maxDate]) {
 
     const [a, b] = lastDomain.map(d => xScale(d));
     svg.select('#clip').select('rect.fg').attr('transform', `translate(${a},0)`).attr('width', b - a).attr('height', '100%');
- 
+
     if (i == 0) {
       i = 1;
       svg.select('g.shifts').selectAll<SVGElement, Shift>('g.shift').data(shifts, d => d.id)
@@ -145,11 +153,11 @@ function byTime([minDate, maxDate]) {
             .each(function (d) {
               d3.select(this)
                 .attr('opacity', 0)
-                .attr('transform', `translate(0,${d.y + 40})`)
+                .attr('transform', `translate(0,${d.y + 40+currentOffset})`)
                 .transition(t)
                 .delay(200)
                 .attr('opacity', 1)
-                .attr('transform', `translate(0,${d.y})`)
+                .attr('transform', `translate(0,${d.y+currentOffset})`)
             }),
           update => update
             .call(s => s.selectAll('g.group').data(d => d.components))
@@ -162,7 +170,7 @@ function byTime([minDate, maxDate]) {
                 s.select('g.duration').attr('transform', `translate(${dx},0)`);
               }))
               .call(s => s.select('g.text').attr('transform', (d: any) => `translate(${d.x+4},${-rowTextHeight})`))
-              .attr('transform', d => `translate(0,${d.y})`)
+              .attr('transform', d => `translate(0,${d.y+currentOffset})`)
               .selectAll<SVGElement, ShiftComponent>('g.group')
                 .attr('transform', d => `translate(${d.x},0)`)
                 .call(s => s.select('rect')
@@ -186,7 +194,7 @@ function byTime([minDate, maxDate]) {
         .join(
           enter => enter.append('g')
             .call(drawShift, bandwidth)
-            .attr('transform', d => `translate(0,${d.y})`)
+            .attr('transform', d => `translate(0,${d.y+currentOffset})`)
             .call(s => s.select('g.text').attr('transform', d => `translate(${d.x+4},${-rowTextHeight})`))
             .call(s => s.selectAll<SVGElement, ShiftComponent>('g.group')
               .attr('transform', d => `translate(${d.x},0)`)
@@ -209,7 +217,7 @@ function byTime([minDate, maxDate]) {
                 s.select('g.duration').attr('transform', `translate(${dx},0)`);
               }))
               .call(s => s.select('g.text').attr('transform', (d: any) => `translate(${d.x+4},${-rowTextHeight})`))
-              .attr('transform', d => `translate(0,${d.y})`)
+              .attr('transform', d => `translate(0,${d.y+currentOffset})`)
               .selectAll<SVGElement, ShiftComponent>('g.group')
                 .attr('transform', d => `translate(${d.x},0)`)
                 .call(s => s.select('rect')
@@ -243,19 +251,36 @@ function byTime([minDate, maxDate]) {
     return shift;
   }
 
+  function zoomStarted() {
+    const { sourceEvent } = d3.event;
+    if (sourceEvent == null) return;
+    lastOffsetY = sourceEvent.type == "touchstart" ? sourceEvent.touches[0].screenY : sourceEvent.offsetY;
+  }
+
+  function zoomEnded() {
+    currentOffset = dy;
+  }
+
   function zoomed() {
     xScale = d3.event.transform.rescaleX(xScaleCopy);
+
+    // manually compute the drag distance and create zoom transform
+    const { sourceEvent } = d3.event;
+    if (sourceEvent != null) {
+      const {type, touches, offsetY } = sourceEvent; 
+      dy = (type == 'touchmove' ? touches[0].screenY : offsetY) - lastOffsetY + currentOffset;
+    }
+
     topAxis = topAxis.scale(xScale);
     bottomAxis = bottomAxis.scale(xScale);
     drawAxis();
 
     const [a, b] = lastDomain.map(d => xScale(d));
     svg.select('#clip').select('rect.fg').attr('transform', `translate(${a},0)`).attr('width', b - a).attr('height', '100%');
- 
     
     svg.select('g.shifts').selectAll<SVGElement, Shift>('g.shift')
       .each(updatePositions)
-      .attr('transform', shift => `translate(0,${shift.y})`)
+      .attr('transform', shift => `translate(0,${shift.y + dy})`)
       .call(s => s.select('g.text').attr('transform', d => `translate(${d.x + 4},${-rowTextHeight})`))
       .call(s => s.selectAll<SVGElement, ShiftComponent>('g.group')
         .attr('transform', d => `translate(${d.x},0)`)
@@ -289,7 +314,7 @@ function byTime([minDate, maxDate]) {
         .call(s => s.select('g.text')
           .attr('transform', (d: any) => `translate(${d.x+4},${-rowTextHeight})`)
         )
-        .attr('transform', d => `translate(0,${d.y})`)
+        .attr('transform', d => `translate(0,${d.y+currentOffset})`)
         .selectAll<SVGElement, ShiftComponent>('g.group')
           .attr('transform', d => `translate(${d.x},0)`)
           .call(s => s.select('rect')
@@ -315,7 +340,7 @@ function byTime([minDate, maxDate]) {
 
 function byEmployee(employeeId, centerDate: Date) {
   let minDate = d3.timeWeek.floor(centerDate);
-  let maxDate = d3.timeDay.offset(minDate, 8);
+  let maxDate = d3.timeDay.offset(minDate, 7);
 
   const domain = d3.timeDay.range(minDate, maxDate).map(d => d.toISOString().slice(0, 10));
   const j = domain.indexOf(centerDate.toISOString().slice(0, 10));
@@ -475,6 +500,11 @@ function byEmployee(employeeId, centerDate: Date) {
   let lastOffsetY = 0,
     currentOffset = 0,
     transform = d3.zoomIdentity;
+
+  function manualTranslate(z) {
+    let lastOffsetY = 0, currentOffset = 0, transform = d3.zoomIdentity;
+    z.on('start', zoomStarted).on('end', zoomEnded).on('zoom', zoomed);
+  }
 
   function zoomStarted() {
     const { sourceEvent } = d3.event;
