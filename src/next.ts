@@ -459,33 +459,6 @@ function byEmployee(employeeId, centerDate: Date) {
     });
   }
 
-  function normalizeDate(d: Date) {
-    d = new Date(d);
-    d.setFullYear(2000);
-    d.setMonth(0)
-    d.setDate(1);
-    return d;
-  }
-
-  function normalizeDatePair([d0, d1]: [Date, Date]) {
-    d0 = new Date(d0);
-    d0.setFullYear(2000);
-    d0.setMonth(0)
-    d0.setDate(1);
-    d1 = new Date(d1);
-    d1.setFullYear(2000);
-    d1.setMonth(0)
-    d1.setDate(1);
-
-    if (d1 < d0) {
-      d1.setDate(d1.getDate() + 1);
-    }
-
-    return [d0, d1];
-  }
-
-
-
   function updatePositions(shift: Shift) {
     calculateNorms(shift);
     for (const comp of shift.components) {
@@ -771,7 +744,7 @@ function fancy<T1 extends Array<any>, T2>(input: Observable<T1>, first: T1, fn: 
 }
 
 function calculateNorms(shift: Shift) {
-  let date;
+  let date, offset;
   const first = shift.components.length > 0 ? shift.components[0].start : null;
   date = new Date(shift.start);
   date.setFullYear(2000);
@@ -780,14 +753,17 @@ function calculateNorms(shift: Shift) {
   shift.startNorm = date;
   for (const comp of shift.components) {
     date = new Date(comp.start);
+    offset = d3.timeDay.count(first, date);
     date.setFullYear(2000);
     date.setMonth(0)
-    date.setDate(1 + d3.timeDay.count(first, date));
+    date.setDate(1 + offset);
     comp.startNorm = date;
+
     date = new Date(comp.end);
+    offset = d3.timeDay.count(first, date);
     date.setFullYear(2000);
     date.setMonth(0)
-    date.setDate(1 + d3.timeDay.count(first, date));
+    date.setDate(1 + offset);
     comp.endNorm = date;
   }
 }

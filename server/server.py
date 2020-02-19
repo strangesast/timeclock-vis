@@ -1,5 +1,6 @@
 import os
 import json
+import configparser
 import asyncio
 from functools import reduce
 import weakref
@@ -93,6 +94,9 @@ default_employee_props = [
 
 @routes.get('/data/shifts')
 async def get_shifts(request):
+    """
+    borked.  API returns inconsistent results based on time range
+    """
     q = parse_qs(request.query)
     if employee_id := q.get('employee'):
         employees_list = await request.app['proxy'].GetEmployees([employee_id])
@@ -106,20 +110,13 @@ async def get_shifts(request):
     employees_list = [{k: v if (v := empl.get(k)) != 'None' else None for k in default_employee_props}
             for empl in employees_list]
 
-    min_gap = timedelta(hours=12)
-
+    # timezone is wrong
     min_date = d - timedelta(hours=10) if (d := q.get('minDate')) else default_min_date;
+    min_date = min_date.replace(hour=0, minute=0, second=0, microsecond=0)
     max_date = d - timedelta(hours=10) if (d := q.get('maxDate')) else default_max_date;
-    gap = max_date - min_date
-
-    if gap < min_gap:
-      mid_date = min_date + gap / 2
-      min_date = mid_date - min_gap / 2;
-      max_date = mid_date + min_gap / 2;
+    max_date = max_date.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
 
     included_employee_ids = set()
-    print(f'{min_date=}')
-    print(f'{max_date=}')
     employee_timecards = await request.app['proxy'].GetTimecards(employee_ids, min_date, max_date, False)
     shifts = []
     for each in employee_timecards:
@@ -145,8 +142,11 @@ async def get_shifts(request):
                 }
             shifts.append(shift)
 
+    shifts.sort(key = lambda v: v['start'])
+
+    employee_ids = list(dict.fromkeys(s['employee'] for s in shifts))
+
     employees = {}
-    employee_ids = []
     for employee in employees_list:
         employee_id = employee['Id']
         key = str(employee_id)
@@ -156,7 +156,6 @@ async def get_shifts(request):
                 'name': f'{employee["Name"]} {employee["LastName"]}',
                 'color': models.EmployeeShiftColor(employee_id % len(models.EmployeeShiftColor)),
             }
-            employee_ids.append(key)
 
     return json_response({
         'employees': employees,
@@ -201,16 +200,21 @@ async def background(app):
 
 
 async def main():
+    if not os.path.isfile('config.ini'):
+        raise RuntimeError('no config file found')
+    config = configparser.ConfigParser()
+    config.read('config.ini')
+
     app = web.Application()
     app['websockets'] = weakref.WeakSet()
     host = '0.0.0.0'
 
     app['db'] = motor.motor_asyncio.AsyncIOMotorClient(f'mongodb://user:password@{host}:27017')
     app['proxy'] = get_async_rpc_connection(
-        os.environ.get('AMG_HOST'),
-        os.environ.get('AMG_PORT'),
-        os.environ.get('AMG_PASSWORD'),
-        os.environ.get('AMG_USERNAME'),
+        os.environ.get('AMG_HOST') or config['AMG'].get('HOST'),
+        os.environ.get('AMG_PORT') or config['AMG'].get('PORT'),
+        os.environ.get('AMG_PASSWORD') or config['AMG'].get('PASSWORD'),
+        os.environ.get('AMG_USERNAME') or config['AMG'].get('USERNAME'),
     )
 
     app.add_routes(routes)
