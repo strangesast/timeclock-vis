@@ -23,8 +23,13 @@ export function generateData(now = new Date(), fuzzy = 30): {shifts: models.Shif
     const id = i.toString();
 
     employees[id] = {
+      _id: id,
       id,
-      name: `Employee ${i + 1}`,
+      Code: ('0'.repeat(4) + (i + 1)).slice(-4),
+      Name: `FirstName ${i + 1}`,
+      MiddleName: String.fromCharCode((i % 26) + 65),
+      LastName: `LastName`,
+      HireDate: new Date(),
       shift: { start, end, duration: 2.88e7 },
       color: models.EmployeeShiftColor[models.EMPLOYEE_SHIFT_COLORS[i % models.EMPLOYEE_SHIFT_COLORS.length]],
     };
@@ -142,11 +147,13 @@ export function generateData(now = new Date(), fuzzy = 30): {shifts: models.Shif
         });
       }
   
+      const id = (++lastShiftId).toString();
       shifts.push({
+        _id: id,
         x: 0,
         y: 0,
-        id: (++lastShiftId).toString(),
-        employee,
+        id,
+        employee: employee.id,
         components,
         started,
         punches: punches.map(date => ({date})),

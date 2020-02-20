@@ -10,7 +10,7 @@ import motor.motor_asyncio
 from bson.json_util import dumps
 from aiohttp import web, WSCloseCode
 import models
-from util import get_async_rpc_connection, parse_timecards, merge_nearby_shifts
+from util import get_async_rpc_connection, parse_timecards, merge_nearby_shifts, get_mongo_db
 
 routes = web.RouteTableDef()
 EMPLOYEE_IDS = ['50', '53', '71', '61', '82', '73', '55', '72', '66', '62', '69', '67', '80', '79', '57', '51', '70', '74', '54', '56', '58', '59', '64', '65']
@@ -93,6 +93,7 @@ default_employee_props = [
 ]
 
 
+'''
 @routes.get('/data/shifts')
 async def get_shifts(request):
     """
@@ -164,10 +165,53 @@ async def get_shifts(request):
         'employeeIds': employee_ids,
         'shifts': shifts
     })
+'''
+
+
+@routes.get('/data/shifts')
+async def get_shifts(request):
+    q = parse_qs(request.query)
+
+
+    min_date, max_date = q.get('minDate'), q.get('maxDate')
+
+    if min_date is None:
+        min_date = datetime.now() - timedelta(hours=24)
+    if max_date is None:
+        max_date = datetime.now() + timedelta(hours=24)
+
+    db = request.app['db'].timeclock;
+
+    query = {
+        '$or': [
+            {'start': {'$gt': min_date, '$lt': max_date}},
+            {'$and': [{'end': None}, {'start': {'$lt': max_date}}]},
+            {'end': {'$gt': min_date, '$lt': max_date}},
+            {'$and': [{'start': {'$lt': min_date}}, {'end': {'$gt': max_date}}]},
+        ]
+    }
+
+    if employee_id := q.get('employee'):
+        employee = await db.employees.find_one({'id': employee_id})
+        if employee is None:
+            return web.HTTPNotFound(body=f'no employee with id: "{employee_id}"')
+        query['employee'] = employee_id
+        employees = {employee_id: employee}
+    else:
+        employees = await db.employees.find({}).to_list(100)
+        employees = {id: employee for employee in employees if (id := employee.get('id'))}
+
+    shifts = await db.shifts.find(query).to_list(100000)
+
+    return json_response({
+        'employees': employees,
+        'employeeIds': [employee_id] if employee_id is not None else EMPLOYEE_IDS,
+        'shifts': shifts,
+    });
 
 
 def json_response(d):
-    return web.Response(text=json.dumps(d, default=default))
+    return web.Response(text=dumps(d, default=default))
 
 
 def default(o):
@@ -181,7 +225,7 @@ async def on_shutdown(app):
     for ws in set(app['websockets']):
         await ws.close(code=WSCloseCode.GOING_AWAY,
                        message='Server shutdown')
-    await app['proxy'].close()
+    #await app['proxy'].close()
     app['db'].close()
 
 
@@ -211,9 +255,9 @@ async def main():
     app['websockets'] = weakref.WeakSet()
     host = '0.0.0.0'
 
-    app['db'] = motor.motor_asyncio.AsyncIOMotorClient(f'mongodb://user:password@{host}:27017')
+    app['db'] = await get_mongo_db(config['MONGO'])
 
-    app['proxy'] = get_async_rpc_connection(config['AMG'])
+    #app['proxy'] = get_async_rpc_connection(config['AMG'])
 
     app.add_routes(routes)
     app.on_shutdown.append(on_shutdown)
@@ -246,7 +290,8 @@ def parse_qs(query):
                 pass
     if 'employee' in query:
         try:
-            result['employee'] = int(query['employee'])
+            int(query['employee'])
+            result['employee'] = query['employee']
         except ValueError:
             pass
 

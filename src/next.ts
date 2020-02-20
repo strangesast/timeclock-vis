@@ -51,7 +51,7 @@ drawButton('Reset', [120, 36])
   
     await worker.initializeData(now);
   } else {
-    now = new Date(2020, 1, 3, 14, 22);
+    now = new Date();
   }
   
   const today = d3.timeDay.floor(new Date(now));
@@ -135,10 +135,10 @@ function byTime([minDate, maxDate]) {
 
     if (i == 0) {
       i = 1;
-      svg.select('g.shifts').selectAll<SVGElement, Shift>('g.shift').data(shifts, d => d.id)
+      svg.select('g.shifts').selectAll<SVGElement, Shift>('g.shift').data(shifts, d => d._id)
         .join(
           enter => enter.append('g')
-            .call(drawShift, bandwidth)
+            .call(drawShift, bandwidth, employees)
             .call(s => s.select('g.text').attr('transform', d => `translate(${d.x+4},${-rowTextHeight})`))
             .call(s => s.selectAll<SVGElement, ShiftComponent>('g.group')
               .attr('transform', d => `translate(${d.x},0)`)
@@ -163,9 +163,10 @@ function byTime([minDate, maxDate]) {
             .call(s => s.selectAll('g.group').data(d => d.components))
             .call(s => s.transition(t).delay(100)
               .call(s => s.select('g.text').each(function (d) {
+                const employee = employees[d.employee] as Employee;
                 const s = d3.select(this);
                 const text = s.select<SVGGraphicsElement>('text')
-                  .text((d: any) => d.employee.name);
+                  .text((d: Shift) => formatName(employee));
                 const dx = text.node().getBBox().width + 4;
                 s.select('g.duration').attr('transform', `translate(${dx},0)`);
               }))
@@ -187,13 +188,13 @@ function byTime([minDate, maxDate]) {
         .on('click', function(d) {
           d3.select(this).on('click', null); // probs should be in byEmployee
           cleanup();
-          byEmployee(d.employee.id, d.start);
+          byEmployee(employees[d.employee], d.start);
         });
     } else {
-      svg.select('g.shifts').selectAll<SVGElement, Shift>('g.shift').data(shifts, d => d.id)
+      svg.select('g.shifts').selectAll<SVGElement, Shift>('g.shift').data(shifts, d => d._id)
         .join(
           enter => enter.append('g')
-            .call(drawShift, bandwidth)
+            .call(drawShift, bandwidth, employees)
             .attr('transform', d => `translate(0,${d.y+currentOffset})`)
             .call(s => s.select('g.text').attr('transform', d => `translate(${d.x+4},${-rowTextHeight})`))
             .call(s => s.selectAll<SVGElement, ShiftComponent>('g.group')
@@ -212,7 +213,7 @@ function byTime([minDate, maxDate]) {
             .call(s => s
               .call(s => s.select('g.text').each(function (d) {
                 const s = d3.select(this);
-                const text = s.select<SVGGraphicsElement>('text').text((d: any) => d.employee.name);
+                const text = s.select<SVGGraphicsElement>('text').text((d: any) => formatName(employees[d.employee]));
                 const dx = text.node().getBBox().width + 4;
                 s.select('g.duration').attr('transform', `translate(${dx},0)`);
               }))
@@ -233,7 +234,7 @@ function byTime([minDate, maxDate]) {
         .on('click', function(d) {
           d3.select(this).on('click', null); // probs should be in byEmployee
           cleanup();
-          byEmployee(d.employee.id, d.start);
+          byEmployee(employees[d.employee], d.start);
         });
     }
   };
@@ -241,11 +242,11 @@ function byTime([minDate, maxDate]) {
   function updatePositions(shift: Shift) {
     for (const comp of shift.components) {
       const index = comp.type == ShiftComponentType.Projected ? 1 : 0;
-      comp.fill = d3.color(employeeColorScale(shift.employee.id)[index]);
+      comp.fill = d3.color(employeeColorScale(shift.employee)[index]);
       comp.x = xScale(comp.start);
       comp.w = Math.max(xScale(comp.end) - comp.x, 0);
     }
-    shift.y = yScale(shift.employee.id);
+    shift.y = yScale(shift.employee);
     const [a, b] = [shift.start, shift.end].map(xScale);
     shift.x = Math.min(Math.max(a, 0), b);
     return shift;
@@ -306,8 +307,8 @@ function byTime([minDate, maxDate]) {
       .call(s => s.transition(t)
         .call(s => s.select('g.text').each(function (d) {
           const s = d3.select(this);
-          const text = s.select<SVGGraphicsElement>('text')
-            .text((d: any) => d.employee.name);
+          const text = s.select<SVGGraphicsElement>('text');
+          // .text((d: any) => formatName(employee));
           const dx = text.node().getBBox().width + 4;
           s.select('g.duration').attr('transform', `translate(${dx},0)`);
         }))
@@ -338,7 +339,8 @@ function byTime([minDate, maxDate]) {
   window.addEventListener('resize', debouncedResized);
 }
 
-function byEmployee(employeeId, centerDate: Date) {
+function byEmployee(employee: Employee, centerDate: Date) {
+  const employeeId = employee['id'];
   let minDate = d3.timeWeek.floor(centerDate);
   let maxDate = d3.timeDay.offset(minDate, 7);
 
@@ -398,7 +400,7 @@ function byEmployee(employeeId, centerDate: Date) {
     ];
     zoom.translateExtent(extent);
   
-    const text = `${employee.name}:  Week of ${[minDate, maxDate].map(formatDateSimple).join(' - ')}`;
+    const text = `${formatName(employee)}:  Week of ${[minDate, maxDate].map(formatDateSimple).join(' - ')}`;
     nameTitle.select('text').text(text);
 
     xScale.domain([minTime, maxTime]);
@@ -420,10 +422,10 @@ function byEmployee(employeeId, centerDate: Date) {
       .call(s => s.select('path').remove())
       .call(s => s.selectAll('.tick').select('line').remove());
 
-    svg.select('g.shifts').selectAll<SVGElement, Shift>('g.shift').data(shifts, d => d.id).join(
+    svg.select('g.shifts').selectAll<SVGElement, Shift>('g.shift').data(shifts, d => d._id).join(
       enter => enter.append('g')
         .each(updatePositions)
-        .call(drawShift, bandwidth)
+        .call(drawShift, bandwidth, {[employee.id]: employee})
         .each(function (d) {
           d3.select(this)
             .attr('opacity', 0)
@@ -480,7 +482,8 @@ function byEmployee(employeeId, centerDate: Date) {
     ).on('click', function (d) {
       d3.select(this).on('click', null);
       cleanup();
-      byTime([d3.timeHour.offset(d.start, -4), d3.timeHour.offset(d.end, 4)]);
+      console.log(d);
+      byTime([d3.timeHour.offset(d.start, -4), d3.timeHour.offset(d.end != null ? d.end : d.start, 4)]);
     });
   }
 
@@ -488,7 +491,7 @@ function byEmployee(employeeId, centerDate: Date) {
     calculateNorms(shift);
     for (const comp of shift.components) {
       const index = comp.type == ShiftComponentType.Projected ? 1 : 0;
-      comp.fill = d3.color(employeeColorScale(shift.employee.id)[index]);
+      comp.fill = d3.color(employeeColorScale(shift.employee)[index]);
       comp.x = xScale(comp.startNorm);
       comp.w = Math.max(xScale(comp.endNorm) - comp.x, 0);
     }
@@ -633,7 +636,7 @@ function drawStrokeAnimation(sel, colors: string[]) {
     .attr('repeatCount', 'indefinite');
 }
 
-function drawShift(sel, bandwidth) {
+function drawShift(sel, bandwidth, employees) {
   return sel
     .classed('shift', true)
     .attr('cursor', 'pointer')
@@ -644,7 +647,7 @@ function drawShift(sel, bandwidth) {
         .attr('y', 10)
         .attr('text-anchor', 'start')
         .attr('alignment-baseline', 'bottom')
-        .text(d => d.employee.name)
+        .text(d => formatName(employees[d.employee]))
       )
       .filter(d => d.started)
       .call(s => s.append('g').classed('duration', true)
@@ -652,7 +655,7 @@ function drawShift(sel, bandwidth) {
           const dx = (this.previousSibling as SVGGraphicsElement).getBBox().width + 4;
           d3.select(this)
             .attr('transform', `translate(${dx},0)`)
-            .call(drawMiniPie, d.duration / d.expectedDuration, d.employee.id);
+            .call(drawMiniPie, d.duration / d.expectedDuration, d.employee);
         })
         .call(s => s.append('text')
           .attr('x', 24)
@@ -796,6 +799,10 @@ function calculateNorms(shift: Shift) {
     date.setDate(1 + offset);
     comp.endNorm = date;
   }
+}
+
+function formatName(empl: Employee) {
+  return `${empl.Name} ${empl.LastName}`;
 }
 
 function formatDateSimple(date: Date): string {

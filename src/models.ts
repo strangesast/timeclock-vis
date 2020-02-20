@@ -1,3 +1,7 @@
+interface MongoObject {
+  _id: string;
+}
+
 export enum EmployeeShiftColor {
   BLUE,
   GREEN,
@@ -10,9 +14,13 @@ export const EMPLOYEE_SHIFT_COLORS = Object.values(EmployeeShiftColor).filter(v 
 
 export type EmployeeID = string;
 
-export interface Employee {
+export interface Employee extends MongoObject {
   id: EmployeeID;
-  name: string;
+  Code: string;
+  Name: string;
+  MiddleName: string;
+  LastName: string;
+  HireDate: Date;
   shift: {
     start: Date;
     end: Date;
@@ -55,12 +63,9 @@ interface ActualShiftComponent extends BaseShiftComponent {
 
 export type ShiftComponent = ProjectedShiftComponent|ActualShiftComponent;
 
-export interface Shift {
+export interface Shift extends MongoObject {
   id: string;
-  employee: {
-    id: EmployeeID;
-    name: string;
-  }
+  employee: EmployeeID;
   start: Date; // start of first component (actual or projected)
   startNorm?: Date; // start of first component (actual or projected)
   end: Date; // end of last component (actual or projected)

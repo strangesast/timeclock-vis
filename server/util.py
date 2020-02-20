@@ -1,8 +1,35 @@
 import os
 import xmlrpc.client
 import asyncio
+import motor
 from datetime import timedelta
 from aiohttp_xmlrpc.client import ServerProxy
+
+
+async def get_mysql_db(config):
+    '''
+    connect to mysql/mariadb database
+    '''
+    host, port, user, password, db = [config.get(k) for k in ['host', 'port', 'user', 'password', 'db']]
+    port = int(port)
+    conn = await aiomysql.connect(host=host, port=port, user=user, password=password)
+    return conn
+
+
+async def get_mongo_db(config):
+    '''
+    connect to mongodb, check connection
+    '''
+    host, port, user, password = [config.get(s) for s in ['host', 'port', 'user', 'password']]
+    url = f'mongodb://{user}:{password}@{host}:{port}'
+    conn = motor.motor_asyncio.AsyncIOMotorClient(url)
+
+    try:
+        await conn.admin.command('ismaster')
+    except ConnectionFailure as e:
+        raise Exception(f'failed to connect to mongo at "{url}"')
+
+    return conn
 
 
 def get_async_rpc_connection(config):

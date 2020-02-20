@@ -15,26 +15,7 @@ from datetime import timedelta, datetime
 from itertools import zip_longest, islice
 import models
 
-from util import get_async_rpc_connection, merge_nearby_shifts, parse_timecards
-
-
-async def get_mysql_db(config):
-    host, port, user, password, db = [config.get(k) for k in ['host', 'port', 'user', 'password', 'db']]
-    port = int(port)
-    conn = await aiomysql.connect(host=host, port=port, user=user, password=password)
-    return conn
-
-
-async def get_mongo_db(config):
-    host, port, user, password = [config.get(s) for s in ['host', 'port', 'user', 'password']]
-    conn = motor.motor_asyncio.AsyncIOMotorClient(f'mongodb://{user}:{password}@{host}:{port}')
-
-    try:
-        await conn.admin.command('ismaster')
-    except ConnectionFailure as e:
-        raise Error('unable to connect to mongo')
-
-    return conn
+from util import get_async_rpc_connection, merge_nearby_shifts, parse_timecards, get_mysql_db, get_mongo_db
 
 
 async def main():

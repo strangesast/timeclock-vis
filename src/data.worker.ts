@@ -169,28 +169,46 @@ function sortBy(arr) {
 function interpretResponse(content) {
   const {shifts, employees, employeeIds} = content;
   for (const shift of shifts) {
-    shift.employee = employees[shift.employee];
+    if (shift['_id'] != null && '$oid' in shift['_id']) {
+      shift['_id'] = shift['_id']['$oid'];
+    }
     shift.started = true;
     if (typeof shift.expectedDuration !== "number") {
       shift.expectedDuration = 2.88e7;
     }
-    if (typeof shift.start === 'string') {
+    if (shift.start != null && '$date' in shift.start) {
+      shift.start = new Date(shift.start['$date']);
+    } else if (typeof shift.start === 'string') {
       shift.start = new Date(shift.start);
     }
-    if (typeof shift.end === 'string') {
+    if (shift.end != null && '$date' in shift.end) {
+      shift.end = new Date(shift.end['$date']);
+    } else if (typeof shift.end === 'string') {
       shift.end = new Date(shift.end);
     }
     if (Array.isArray(shift.components)) {
       for (const comp of shift.components) {
         comp.showTime = true;
-        if (typeof comp.start === 'string') {
+        if (comp.start != null && '$date' in comp.start) {
+          comp.start = new Date(comp.start['$date']);
+        } else if (typeof comp.start === 'string') {
           comp.start = new Date(comp.start);
         }
-        if (typeof comp.end === 'string') {
+        if (comp.end != null && '$date' in comp.end) {
+          comp.end = new Date(comp.end['$date']);
+        } else if (typeof comp.end === 'string') {
           comp.end = new Date(comp.end);
+        } else if (comp.end == null) {
+          comp.end = new Date();
         }
       }
     }
+  }
+  for (const empl of Object.values(employees) as any[]) {
+    if (empl['_id'] != null && '$oid' in empl['_id']) {
+      empl['_id'] = empl['_id']['$oid'];
+    }
+    empl.HireDate = new Date(empl.HireDate);
   }
 }
 
