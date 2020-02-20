@@ -115,6 +115,54 @@ async def main():
     result = await collection.insert_many(shifts)
 
 
+    pipeline = [
+      {'$match': {'end': {'$ne': None}}},
+      {'$addFields': {
+          'startParts': {'$dateToParts': {'date': '$start'}},
+          'endParts': {'$dateToParts': {'date': '$end'}}
+      }},
+      {'$addFields': {
+          'startSecs': {
+              '$add': [
+                  '$startParts.millisecond',
+                  {'$multiply': ['$startParts.second', 1000]},
+                  {'$multiply': ['$startParts.minute', 60000]},
+                  {'$multiply': ['$startParts.hour', 60*60*1000]}
+              ]},
+          'endSecs': {
+              '$add': [
+                  '$endParts.millisecond',
+                  {'$multiply': ['$endParts.second', 1000]},
+                  {'$multiply': ['$endParts.minute', 60000]},
+                  {'$multiply': ['$endParts.hour', 60*60*1000]}
+              ]}
+      }},
+      {'$addFields': {
+          'duration': {'$divide': ['$duration', 3.6e6]}
+      }},
+      {'$group': {
+          '_id': '$employee',
+          'start': {'$avg': '$startSecs'},
+          'end': {'$avg': '$endSecs'},
+          'duration': {'$avg': '$duration'},
+          'stdDev': {'$stdDevPop': '$duration'},
+          'count': {'$sum': 1},
+          'asOf': {'$max': '$end'},
+      }},
+      {'$addFields': {
+          'count': {'$toInt': '$count'},
+          'start': {'$dateFromParts': {'year': 2000, 'month': 1, 'day': 1, 'millisecond': {'$toInt': '$start'}}},
+          'end': {'$dateFromParts': {'year': 2000, 'month': 1, 'day': 1, 'millisecond': {'$toInt': '$end'}}}
+      }},
+      {'$project': {'stats': '$$ROOT'}},
+      {'$project': {'stats': 1, 'id': '$_id', '_id': 0}},
+      {'$merge': {'into': 'employees', 'on': 'id'}}
+    ]
+
+    async for doc in collection.aggregate(pipeline):
+        pass
+
+
     await proxy.close()
     await cur.close()
     mongo_client.close()
