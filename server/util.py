@@ -87,9 +87,9 @@ def merge_nearby_shifts(it, threshold=timedelta(hours=4)):
 
 
 
-def parse_timecards(employee_id, timecards):
+def parse_timecards(employee_id, timecards, offset=timedelta(hours=5)):
     shifts = []
-    timecards = [[punch['OriginalDate'] if (punch := timecard.get(key)) else None for key in ('StartPunch', 'StopPunch')]
+    timecards = [[punch['OriginalDate'] + offset if (punch := timecard.get(key)) else None for key in ('StartPunch', 'StopPunch')]
             for timecard in timecards]
     timecards = merge_dups(timecards)
     # not sure why start would be None
