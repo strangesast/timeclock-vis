@@ -1,4 +1,5 @@
 import os
+from pprint import pprint
 import motor
 import asyncio
 import aiomysql
@@ -72,7 +73,7 @@ def merge_nearby_shifts(it, threshold=timedelta(hours=4)):
     components = []
     for shift in it:
         start_date, end_date = shift
-        if last_end is not None and start_date - last_end < threshold:
+        if last_end is not None and (start_date - last_end) < threshold:
             components.append(shift)
         else:
             if len(components):
@@ -86,11 +87,97 @@ def merge_nearby_shifts(it, threshold=timedelta(hours=4)):
         yield components
 
 
+def first_transform(it, offset=timedelta(hours=5)):
+    for item in it:
+        obj = {'Punches': []}
+        for k in ['Date', 'IsManual', 'Reg']:
+            obj[k] = item.get(k)
+        for k in ['StartPunch', 'StopPunch']:
+            if (p := item.get(k)):
+                obj[k] = p['OriginalDate'] + offset
+                obj['Punches'].append(p['Id'])
+            else:
+                obj[k] = None
+        yield obj
+
+
+def rename_fields(it):
+    for item in it:
+        obj = {}
+        obj['punches'] = item['Punches']
+        obj['date'] = item['Date']
+        obj['isManual'] = item['IsManual']
+        obj['start'] = item['StartPunch']
+        obj['end'] = item['StopPunch']
+        obj['isMerged'] = item['IsMerged']
+        yield obj;
+
+
+def second_transform(it):
+    try:
+        obj = next(it)
+    except StopIteration:
+        return
+
+    timecard = obj
+    timecard['IsMerged'] = False
+    aa, ab = [obj.get(k) for k in ['StartPunch', 'StopPunch']]
+    second = False
+
+    for nextobj in it:
+        ba, bb = [nextobj.get(k) for k in ['StartPunch', 'StopPunch']]
+        # if pair A end is pair B start
+        if ba == ab:
+            # set pair A end to pair B end
+            timecard['Reg'] += nextobj['Reg']
+            timecard['Punches'].extend(nextobj['Punches'])
+            timecard['StopPunch'] = nextobj['StopPunch']
+            timecard['IsMerged'] = True
+            ab = bb
+            second = False
+        else:
+            # else pair A is unique so move on
+            yield timecard
+            timecard = nextobj
+            timecard['IsMerged'] = False
+            # set pair B as pair A
+            aa, ab = ba, bb
+            second = True
+
+    yield timecard
+
+
+def third_transform(it, threshold=timedelta(hours=4)):
+    last_end = None
+    group = []
+    for item in it:
+        start_date, end_date = item['start'], item['end']
+        if start_date is None: # not sure how to handle this
+            continue
+        if last_end is not None and (start_date - last_end) < threshold:
+            group.append(item)
+        else:
+            if len(group):
+                yield group
+
+            group = [item]
+
+        last_end = end_date
+
+    if len(group):
+        yield group
+
+
+def parse_timecards_2(employee_id, timecards, offset=timedelta(hours=5)):
+    yield from third_transform(rename_fields(second_transform(first_transform(timecards))))
+
 
 def parse_timecards(employee_id, timecards, offset=timedelta(hours=5)):
     shifts = []
+
     timecards = [[punch['OriginalDate'] + offset if (punch := timecard.get(key)) else None for key in ('StartPunch', 'StopPunch')]
             for timecard in timecards]
+
     timecards = merge_dups(timecards)
     # not sure why start would be None
     shifts = [(start, end) for start, end in timecards if start is not None]

@@ -1,5 +1,6 @@
 import os
 import json
+from pprint import pprint
 import configparser
 import asyncio
 from functools import reduce
@@ -188,7 +189,8 @@ async def get_shifts(request):
             {'$and': [{'end': None}, {'start': {'$lt': max_date}}]},
             {'end': {'$gt': min_date, '$lt': max_date}},
             {'$and': [{'start': {'$lt': min_date}}, {'end': {'$gt': max_date}}]},
-        ]
+        ],
+        'flagged': False,
     }
 
     if employee_id := q.get('employee'):
@@ -202,6 +204,8 @@ async def get_shifts(request):
         employees = {id: employee for employee in employees if (id := employee.get('id'))}
 
     shifts = await db.shifts.find(query).to_list(100000)
+    pprint(shifts)
+    pprint(len(shifts))
 
     return json_response({
         'employees': employees,
@@ -246,10 +250,11 @@ async def background(app):
 
 
 async def main():
-    if not os.path.isfile('config.ini'):
+    configpath = os.path.join(os.path.dirname(__file__), 'config.ini')
+    if not os.path.isfile(configpath):
         raise RuntimeError('no config file found')
     config = configparser.ConfigParser()
-    config.read('config.ini')
+    config.read(configpath)
 
     app = web.Application()
     app['websockets'] = weakref.WeakSet()

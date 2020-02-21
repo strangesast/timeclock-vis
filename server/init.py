@@ -11,11 +11,11 @@ from bson.codec_options import TypeRegistry, CodecOptions
 import motor.motor_asyncio
 from enum import Enum, IntEnum
 from aioitertools import groupby, enumerate
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, timezone
 from itertools import zip_longest, islice
 import models
 
-from util import get_async_rpc_connection, merge_nearby_shifts, parse_timecards, get_mysql_db, get_mongo_db
+from util import get_async_rpc_connection, merge_nearby_shifts, parse_timecards_2, get_mysql_db, get_mongo_db
 
 
 async def main():
@@ -78,9 +78,11 @@ async def main():
     #cur = await mysql_client.cursor(aiomysql.DictCursor)
     #await cur.execute('select id,inf_employee_id,Date from tam.tr_clock order by inf_employee_id,Date asc')
 
-    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    now = datetime.now()
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
     interval = timedelta(weeks=2)
     min_date = today - timedelta(days=365)
+    min_date = min_date - timedelta(days=min_date.weekday() - 1)
 
     shifts = []
     while min_date < today:
@@ -90,14 +92,21 @@ async def main():
         for each in employee_timecards:
             employee_id, timecards = each['EmployeeId'], each['Timecards']
 
-            for components in merge_nearby_shifts(parse_timecards(employee_id, timecards)):
-                start_date = components[0][0]
-                end_date = components[-1][1]
+            incomplete_shifts = []
+
+            #for components in merge_nearby_shifts(parse_timecards(employee_id, timecards)):
+            for components in parse_timecards_2(employee_id, timecards):
+                start_date = components[0]['start']
+                end_date = components[-1]['end']
                 is_complete = end_date is not None
                 shift_state = models.ShiftState.Complete if is_complete else models.ShiftState.Incomplete
-                total_duration = reduce(lambda acc, cv: cv[1] - cv[0] + acc, components, timedelta()) if is_complete else None
-                components = [{'start': start, 'end': end, 'duration': end and end - start} for start, end in components]
+                total_duration = timedelta()
+                if is_complete:
+                    for component in components:
+                        total_duration += component['end'] - component['start']
+                is_flagged = True if not is_complete and ((total_duration is not None and total_duration > timedelta(hours=24)) or (now - start_date) > timedelta(hours=24)) else False
                 shift = {
+                    'flagged': is_flagged,
                     'employee': str(employee_id),
                     'components': components,
                     'start': start_date,
@@ -105,7 +114,13 @@ async def main():
                     'duration': total_duration,
                     'state': shift_state.value
                 }
+                if not is_complete:
+                    incomplete_shifts.append(shift)
                 shifts.append(shift)
+
+            for shift in incomplete_shifts[:-1]:
+                shift['flagged'] = True
+
         min_date = max_date
 
     await mongo_client.timeclock.drop_collection('shifts')
@@ -115,6 +130,7 @@ async def main():
     result = await collection.insert_many(shifts)
 
 
+    # calculate count, avg / stdDev for start, end, duration of shift
     pipeline = [
       {'$match': {'end': {'$ne': None}}},
       {'$addFields': {
@@ -138,6 +154,12 @@ async def main():
               ]}
       }},
       {'$addFields': {
+          # compensate for overnight shifts
+          'endSecs': {'$cond': {
+              'if': { '$gte': [ '$startSecs', '$endSecs' ] },
+              'then': {'$add': ['$endSecs', 24*60*60*1000]},
+              'else': '$endSecs'
+              }},
           'duration': {'$divide': ['$duration', 3.6e6]}
       }},
       {'$group': {
@@ -152,10 +174,12 @@ async def main():
       {'$addFields': {
           'count': {'$toInt': '$count'},
           'start': {'$dateFromParts': {'year': 2000, 'month': 1, 'day': 1, 'millisecond': {'$toInt': '$start'}}},
-          'end': {'$dateFromParts': {'year': 2000, 'month': 1, 'day': 1, 'millisecond': {'$toInt': '$end'}}}
+          'end': {'$dateFromParts': {'year': 2000, 'month': 1, 'day': 1, 'millisecond': {'$toInt': '$end'}}},
+          'calculatedOn': now + timedelta(hours=5), # irritating
       }},
       {'$project': {'stats': '$$ROOT'}},
       {'$project': {'stats': 1, 'id': '$_id', '_id': 0}},
+      # add 'stats' property to employee docs
       {'$merge': {'into': 'employees', 'on': 'id'}}
     ]
 

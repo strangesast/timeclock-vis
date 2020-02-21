@@ -343,6 +343,7 @@ function byEmployee(employee: Employee, centerDate: Date) {
   const employeeId = employee['id'];
   let minDate = d3.timeWeek.floor(centerDate);
   let maxDate = d3.timeDay.offset(minDate, 7);
+  console.log(minDate, maxDate);
 
   const domain = d3.timeDay.range(minDate, maxDate).map(d => d.toISOString().slice(0, 10));
   const j = domain.indexOf(centerDate.toISOString().slice(0, 10));
@@ -766,12 +767,12 @@ function drawAxis() {
 
 function fancy<T1 extends Array<any>, T2>(input: Observable<T1>, first: T1, fn: (...args: T1[]) => Promise<[T2, T1]>) {
   return input.pipe(
-    auditTime(1000),
+    auditTime(500),
     // throttleTime(200), // start new fetch new range at most every .1s
     // startWith(first),
     scan(([_, index], value) => [value, index + 1], [null, -1]), // yuck
     switchMap(([args, index]: [T1, number]) => fn(...args).then(result => [result, index, args])),
-    audit(([value, index]) => timer(index > 0 ? 800 : 0)), // only update screen at most once a second
+    audit(([value, index]) => timer(index > 0 ? 600 : 0)), // only update screen at most once a second
     map(([value, index, args]) => [value, args]),
   );
 }
