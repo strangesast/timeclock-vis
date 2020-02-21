@@ -15,6 +15,8 @@ services:
       context: .
       dockerfile: docker/server/Dockerfile
     image: strangesast/timeclock-vis_server
+    depends_on:
+      - mongodb
     environment:
       - env=production
       - AMG_HOST=host.docker.internal
@@ -22,3 +24,15 @@ services:
       - AMG_USER=admin
       - SERVER_PORT=8081
     restart: always
+    volumes:
+      - ./server/config.ini:/app/config.ini
+  mongodb:
+    image: mongo
+    network_mode: 'host'
+    ports:
+      - 27017:27017
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: password
+    volumes:
+      - ./docker/mongo/init.sh:/docker-entrypoint-initdb.d/init.sh
