@@ -208,7 +208,18 @@ function interpretResponse(content) {
     if (empl['_id'] != null && '$oid' in empl['_id']) {
       empl['_id'] = empl['_id']['$oid'];
     }
-    empl.HireDate = new Date(empl.HireDate);
+    if (empl.HireDate != null && '$date' in empl.HireDate) {
+      empl.HireDate = new Date(empl.HireDate['$date']);
+    } else if (typeof empl.HireDate === 'string') {
+      empl.HireDate = new Date(empl.HireDate);
+    }
+    if (empl.stats) {
+      for (const [key, value] of Object.entries(empl.stats)) {
+        if (value != null && value['$date']) {
+          empl.stats[key] = new Date(value['$date']);
+        }
+      }
+    }
   }
 }
 

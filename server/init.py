@@ -8,6 +8,7 @@ from pprint import pprint
 from functools import reduce
 from pymongo.errors import ConnectionFailure
 from bson.codec_options import TypeRegistry, CodecOptions
+from bson.objectid import ObjectId
 import motor.motor_asyncio
 from enum import Enum, IntEnum
 from aioitertools import groupby, enumerate
@@ -129,6 +130,42 @@ async def main():
     collection = mongo_client.timeclock.get_collection('shifts', codec_options=codec_options)
     result = await collection.insert_many(shifts)
 
+    last_employee = None
+    last_start = None
+    last_end = None
+    last_id = None
+    last_duration = None
+    duplicates = []
+    async for doc in collection.find().sort([('employee', pymongo.ASCENDING), ('start', pymongo.ASCENDING)]):
+        _id = doc['_id']
+        employee = doc['employee']
+        if employee != last_employee:
+            last_employee = employee
+            last_start = None
+            last_end = None
+            last_id = None
+            last_duration = None
+
+        start = doc['start']
+        end = doc['end']
+        duration = doc['duration']
+
+        if last_end is not None and start is not None and start < last_end:
+            if duration is None:
+                duplicates.append(_id)
+            elif last_duration is None:
+                duplicates.append(last_id)
+                pass
+            else:
+                duplicates.append(last_id if duration > last_duration else _id)
+
+        last_start = start
+        last_end = end
+        last_id = _id
+        last_duration = duration
+
+    if len(duplicates):
+        await collection.delete_many({'_id': {'$in': duplicates}});
 
     # calculate count, avg / stdDev for start, end, duration of shift
     pipeline = [

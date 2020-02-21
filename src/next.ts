@@ -69,7 +69,7 @@ function updateSize() {
   ({ width, height } = svg.node().getBoundingClientRect());
 }
 
-function byTime([minDate, maxDate]) {
+function byTime([minDate, maxDate], now = new Date()) {
   // setup
   svg.call(zoom = d3.zoom()
     .translateExtent(defaultExtent)
@@ -247,7 +247,7 @@ function byTime([minDate, maxDate]) {
       comp.w = Math.max(xScale(comp.end) - comp.x, 0);
     }
     shift.y = yScale(shift.employee);
-    const [a, b] = [shift.start, shift.end].map(xScale);
+    const [a, b] = [shift.start, shift.end || now].map(xScale);
     shift.x = Math.min(Math.max(a, 0), b);
     return shift;
   }
@@ -343,7 +343,6 @@ function byEmployee(employee: Employee, centerDate: Date) {
   const employeeId = employee['id'];
   let minDate = d3.timeWeek.floor(centerDate);
   let maxDate = d3.timeDay.offset(minDate, 7);
-  console.log(minDate, maxDate);
 
   const domain = d3.timeDay.range(minDate, maxDate).map(d => d.toISOString().slice(0, 10));
   const j = domain.indexOf(centerDate.toISOString().slice(0, 10));
@@ -483,7 +482,6 @@ function byEmployee(employee: Employee, centerDate: Date) {
     ).on('click', function (d) {
       d3.select(this).on('click', null);
       cleanup();
-      console.log(d);
       byTime([d3.timeHour.offset(d.start, -4), d3.timeHour.offset(d.end != null ? d.end : d.start, 4)]);
     });
   }
