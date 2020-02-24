@@ -1,8 +1,7 @@
 version: '3.7'
 services:
-  mongodb:
+  mongo:
     image: mongo
-    network_mode: 'host'
     ports:
       - 27017:27017
     environment:

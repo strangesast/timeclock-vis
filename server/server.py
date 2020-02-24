@@ -1,18 +1,18 @@
 import os
 import json
-from pprint import pprint
-import configparser
 import asyncio
-from functools import reduce
 import weakref
 import pymongo
-from datetime import datetime, date, timedelta, timezone
+import configparser
 import motor.motor_asyncio
+from functools import reduce
 from bson.json_util import dumps
 from aiohttp import web, WSCloseCode
-import models
+from datetime import datetime, date, timedelta, timezone
 from util import get_async_rpc_connection, parse_timecards, merge_nearby_shifts, get_mongo_db
+
 from init import init
+import models
 
 routes = web.RouteTableDef()
 EMPLOYEE_IDS = ['50', '53', '71', '61', '82', '73', '55', '72', '66', '62', '69', '67', '80', '79', '57', '51', '70', '74', '54', '56', '58', '59', '64', '65']
@@ -205,8 +205,6 @@ async def get_shifts(request):
         employees = {id: employee for employee in employees if (id := employee.get('id'))}
 
     shifts = await db.shifts.find(query).to_list(100000)
-    pprint(shifts)
-    pprint(len(shifts))
 
     return json_response({
         'employees': employees,
@@ -272,6 +270,7 @@ async def main(config):
     await site.start()
 
     try:
+        print(f'server running on {host}:{port}')
         await asyncio.create_task(background(app))
     finally:
         print('shutting down')
