@@ -19,13 +19,7 @@ import models
 from util import get_async_rpc_connection, merge_nearby_shifts, parse_timecards_2, get_mysql_db, get_mongo_db
 
 
-async def main():
-    config_path = os.path.join(os.path.dirname(__file__), 'config.ini');
-    if not os.path.isfile(config_path):
-        raise RuntimeError('no config file found')
-    config = configparser.ConfigParser()
-    config.read(config_path)
-
+async def init(config):
     mysql_client = await get_mysql_db(config['MYSQL'])
     mongo_client = await get_mongo_db(config['MONGO'])
 
@@ -269,4 +263,10 @@ def grouper(iterable, n=2, fillvalue=None):
 
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    config_path = os.path.join(os.path.dirname(__file__), 'config.ini');
+    if not os.path.isfile(config_path):
+        raise RuntimeError('no config file found')
+    config = configparser.ConfigParser()
+    config.read(config_path)
+
+    asyncio.run(init(config))

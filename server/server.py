@@ -12,6 +12,7 @@ from bson.json_util import dumps
 from aiohttp import web, WSCloseCode
 import models
 from util import get_async_rpc_connection, parse_timecards, merge_nearby_shifts, get_mongo_db
+from init import init
 
 routes = web.RouteTableDef()
 EMPLOYEE_IDS = ['50', '53', '71', '61', '82', '73', '55', '72', '66', '62', '69', '67', '80', '79', '57', '51', '70', '74', '54', '56', '58', '59', '64', '65']
@@ -249,16 +250,11 @@ async def background(app):
         pass
 
 
-async def main():
-    configpath = os.path.join(os.path.dirname(__file__), 'config.ini')
-    if not os.path.isfile(configpath):
-        raise RuntimeError('no config file found')
-    config = configparser.ConfigParser()
-    config.read(configpath)
+async def main(config):
+    await init(config)
 
     app = web.Application()
     app['websockets'] = weakref.WeakSet()
-    host = '0.0.0.0'
 
     app['db'] = await get_mongo_db(config['MONGO'])
 
@@ -270,7 +266,8 @@ async def main():
     runner = web.AppRunner(app)
     await runner.setup()
 
-    port = '8080'
+    port = os.environ.get('SERVER_BIND_PORT') or config['SERVER'].get('BIND_PORT') or '8081'
+    host = os.environ.get('SERVER_BIND_HOST') or config['SERVER'].get('BIND_HOST') or '0.0.0.0'
     site = web.TCPSite(runner, host, port)
     await site.start()
 
@@ -304,4 +301,10 @@ def parse_qs(query):
 
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    configpath = os.path.join(os.path.dirname(__file__), 'config.ini')
+    if not os.path.isfile(configpath):
+        raise RuntimeError('no config file found')
+    config = configparser.ConfigParser()
+    config.read(configpath)
+
+    asyncio.run(main(config))
