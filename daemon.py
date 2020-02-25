@@ -36,244 +36,42 @@ async def init(mongo_db, mysql_db, proxy):
     await mongo_db.drop_collection('state')
     await mongo_db.create_collection('state', capped=True, size=10000)
 
-    #await mongo_db.drop_collection('shifts')
+    await mongo_db.drop_collection('shifts')
     await mongo_db.command({
         'create': 'shifts',
         'viewOn': 'components',
-        'pipeline':
-[
-    {
-        '$sort': {
-            'start': 1, 
-            'employee': 1
-        }
-    }, {
-        '$match': {
-            'start': {
-                '$ne': None
-            }, 
-            'end': None
-        }
-    }, {
-        '$addFields': {
-            'end': {
-                '$ifNull': [
-                    '$end', '$$NOW'
-                ]
-            }
-        }
-    }, {
-        '$addFields': {
-            'duration': {
-                '$subtract': [
-                    '$end', '$start'
-                ]
-            }
-        }
-    }, {
-        '$group': {
-            '_id': {
-                'date': '$date', 
-                'employee': '$employee'
-            }, 
-            'root': {
-                '$first': '$$ROOT'
-            }, 
-            'start': {
-                '$first': '$start'
-            }, 
-            'end': {
-                '$last': '$end'
-            }, 
-            'duration': {
-                '$sum': '$duration'
-            }, 
-            'components': {
-                '$push': {
-                    'start': '$start', 
-                    'end': '$end', 
-                    'duration': '$duration'
+        'pipeline': [
+            {
+                '$sort': { 'start': 1, 'employee': 1 }
+            }, {
+                '$match': { 'start': { '$ne': None }, }
+            }, {
+                '$addFields': { 'end': { '$ifNull': [ '$end', '$$NOW' ] }
                 }
-            }
-        }
-    }, {
-        '$addFields': {
-            'root.components': '$components', 
-            'root.duration': {
-                '$divide': [
-                    '$root.duration', 3600000
-                ]
-            }, 
-            'root.start': '$start', 
-            'root.end': '$end'
-        }
-    }, {
-        '$replaceRoot': {
-            'newRoot': '$root'
-        }
-    }, {
-        '$match': {
-            'duration': {
-                '$lt': 24
-            }
-        }
-    }
-[
-    {
-        '$sort': {
-            'start': 1, 
-            'employee': 1
-        }
-    }, {
-        '$match': {
-            'start': {
-                '$ne': None
-            }, 
-            'end': None
-        }
-    }, {
-        '$addFields': {
-            'end': {
-                '$ifNull': [
-                    '$end', '$$NOW'
-                ]
-            }
-        }
-    }, {
-        '$addFields': {
-            'duration': {
-                '$subtract': [
-                    '$end', '$start'
-                ]
-            }
-        }
-    }, {
-        '$group': {
-            '_id': {
-                'date': '$date', 
-                'employee': '$employee'
-            }, 
-            'root': {
-                '$first': '$$ROOT'
-            }, 
-            'start': {
-                '$first': '$start'
-            }, 
-            'end': {
-                '$last': '$end'
-            }, 
-            'duration': {
-                '$sum': '$duration'
-            }, 
-            'components': {
-                '$push': {
-                    'start': '$start', 
-                    'end': '$end', 
-                    'duration': '$duration'
+            }, {
+                '$addFields': { 'duration': { '$subtract': [ '$end', '$start' ] } }
+            }, {
+                '$group': {
+                    '_id': { 'date': '$date', 'employee': '$employee' }, 
+                    'root': { '$first': '$$ROOT' }, 
+                    'start': { '$first': '$start' }, 
+                    'end': { '$last': '$end' }, 
+                    'duration': { '$sum': '$duration' }, 
+                    'components': { '$push': { 'start': '$start', 'end': '$end', 'duration': '$duration' } }
                 }
-            }
-        }
-    }, {
-        '$addFields': {
-            'root.components': '$components', 
-            'root.duration': {
-                '$divide': [
-                    '$root.duration', 3600000
-                ]
-            }, 
-            'root.start': '$start', 
-            'root.end': '$end'
-        }
-    }, {
-        '$replaceRoot': {
-            'newRoot': '$root'
-        }
-    }, {
-        '$match': {
-            'duration': {
-                '$lt': 24
-            }
-        }
-    }
-[
-    {
-        '$sort': {
-            'start': 1, 
-            'employee': 1
-        }
-    }, {
-        '$match': {
-            'start': {
-                '$ne': None
-            }, 
-            'end': None
-        }
-    }, {
-        '$addFields': {
-            'end': {
-                '$ifNull': [
-                    '$end', '$$NOW'
-                ]
-            }
-        }
-    }, {
-        '$addFields': {
-            'duration': {
-                '$subtract': [
-                    '$end', '$start'
-                ]
-            }
-        }
-    }, {
-        '$group': {
-            '_id': {
-                'date': '$date', 
-                'employee': '$employee'
-            }, 
-            'root': {
-                '$first': '$$ROOT'
-            }, 
-            'start': {
-                '$first': '$start'
-            }, 
-            'end': {
-                '$last': '$end'
-            }, 
-            'duration': {
-                '$sum': '$duration'
-            }, 
-            'components': {
-                '$push': {
-                    'start': '$start', 
-                    'end': '$end', 
-                    'duration': '$duration'
+            }, {
+                '$addFields': {
+                    'root.components': '$components', 
+                    'root.duration': { '$divide': [ '$root.duration', 3600000 ] }, 
+                    'root.start': '$start', 
+                    'root.end': '$end'
                 }
+            }, {
+                '$replaceRoot': { 'newRoot': '$root' }
+            }, {
+                '$match': { 'duration': { '$lt': 24 } }
             }
-        }
-    }, {
-        '$addFields': {
-            'root.components': '$components', 
-            'root.duration': {
-                '$divide': [
-                    '$root.duration', 3600000
-                ]
-            }, 
-            'root.start': '$start', 
-            'root.end': '$end'
-        }
-    }, {
-        '$replaceRoot': {
-            'newRoot': '$root'
-        }
-    }, {
-        '$match': {
-            'duration': {
-                '$lt': 24
-            }
-        }
-    }
-]]
-        })
+        ]})
     await mongo_db.components.create_index('start')
     await mongo_db.components.create_index('end')
     await mongo_db.components.create_index('employee')
