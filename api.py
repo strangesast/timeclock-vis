@@ -1,3 +1,8 @@
+# connect to mongo
+# provide current / historical object info
+# /shifts, /employees
+# gunicorn?
+# api.py
 import os
 import json
 import asyncio

@@ -1,9 +1,0 @@
-config.ini
-/env/
-/__pycache__/
-.*
-*.un
-*~
-credentials.json
-token.pickle
-*.json
