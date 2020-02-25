@@ -36,9 +36,247 @@ async def init(mongo_db, mysql_db, proxy):
     await mongo_db.drop_collection('state')
     await mongo_db.create_collection('state', capped=True, size=10000)
 
-    await mongo_db.shifts.create_index('start')
-    await mongo_db.shifts.create_index('end')
-    await mongo_db.shifts.create_index('employee')
+    #await mongo_db.drop_collection('shifts')
+    await mongo_db.command({
+        'create': 'shifts',
+        'viewOn': 'components',
+        'pipeline':
+[
+    {
+        '$sort': {
+            'start': 1, 
+            'employee': 1
+        }
+    }, {
+        '$match': {
+            'start': {
+                '$ne': None
+            }, 
+            'end': None
+        }
+    }, {
+        '$addFields': {
+            'end': {
+                '$ifNull': [
+                    '$end', '$$NOW'
+                ]
+            }
+        }
+    }, {
+        '$addFields': {
+            'duration': {
+                '$subtract': [
+                    '$end', '$start'
+                ]
+            }
+        }
+    }, {
+        '$group': {
+            '_id': {
+                'date': '$date', 
+                'employee': '$employee'
+            }, 
+            'root': {
+                '$first': '$$ROOT'
+            }, 
+            'start': {
+                '$first': '$start'
+            }, 
+            'end': {
+                '$last': '$end'
+            }, 
+            'duration': {
+                '$sum': '$duration'
+            }, 
+            'components': {
+                '$push': {
+                    'start': '$start', 
+                    'end': '$end', 
+                    'duration': '$duration'
+                }
+            }
+        }
+    }, {
+        '$addFields': {
+            'root.components': '$components', 
+            'root.duration': {
+                '$divide': [
+                    '$root.duration', 3600000
+                ]
+            }, 
+            'root.start': '$start', 
+            'root.end': '$end'
+        }
+    }, {
+        '$replaceRoot': {
+            'newRoot': '$root'
+        }
+    }, {
+        '$match': {
+            'duration': {
+                '$lt': 24
+            }
+        }
+    }
+[
+    {
+        '$sort': {
+            'start': 1, 
+            'employee': 1
+        }
+    }, {
+        '$match': {
+            'start': {
+                '$ne': None
+            }, 
+            'end': None
+        }
+    }, {
+        '$addFields': {
+            'end': {
+                '$ifNull': [
+                    '$end', '$$NOW'
+                ]
+            }
+        }
+    }, {
+        '$addFields': {
+            'duration': {
+                '$subtract': [
+                    '$end', '$start'
+                ]
+            }
+        }
+    }, {
+        '$group': {
+            '_id': {
+                'date': '$date', 
+                'employee': '$employee'
+            }, 
+            'root': {
+                '$first': '$$ROOT'
+            }, 
+            'start': {
+                '$first': '$start'
+            }, 
+            'end': {
+                '$last': '$end'
+            }, 
+            'duration': {
+                '$sum': '$duration'
+            }, 
+            'components': {
+                '$push': {
+                    'start': '$start', 
+                    'end': '$end', 
+                    'duration': '$duration'
+                }
+            }
+        }
+    }, {
+        '$addFields': {
+            'root.components': '$components', 
+            'root.duration': {
+                '$divide': [
+                    '$root.duration', 3600000
+                ]
+            }, 
+            'root.start': '$start', 
+            'root.end': '$end'
+        }
+    }, {
+        '$replaceRoot': {
+            'newRoot': '$root'
+        }
+    }, {
+        '$match': {
+            'duration': {
+                '$lt': 24
+            }
+        }
+    }
+[
+    {
+        '$sort': {
+            'start': 1, 
+            'employee': 1
+        }
+    }, {
+        '$match': {
+            'start': {
+                '$ne': None
+            }, 
+            'end': None
+        }
+    }, {
+        '$addFields': {
+            'end': {
+                '$ifNull': [
+                    '$end', '$$NOW'
+                ]
+            }
+        }
+    }, {
+        '$addFields': {
+            'duration': {
+                '$subtract': [
+                    '$end', '$start'
+                ]
+            }
+        }
+    }, {
+        '$group': {
+            '_id': {
+                'date': '$date', 
+                'employee': '$employee'
+            }, 
+            'root': {
+                '$first': '$$ROOT'
+            }, 
+            'start': {
+                '$first': '$start'
+            }, 
+            'end': {
+                '$last': '$end'
+            }, 
+            'duration': {
+                '$sum': '$duration'
+            }, 
+            'components': {
+                '$push': {
+                    'start': '$start', 
+                    'end': '$end', 
+                    'duration': '$duration'
+                }
+            }
+        }
+    }, {
+        '$addFields': {
+            'root.components': '$components', 
+            'root.duration': {
+                '$divide': [
+                    '$root.duration', 3600000
+                ]
+            }, 
+            'root.start': '$start', 
+            'root.end': '$end'
+        }
+    }, {
+        '$replaceRoot': {
+            'newRoot': '$root'
+        }
+    }, {
+        '$match': {
+            'duration': {
+                '$lt': 24
+            }
+        }
+    }
+]]
+        })
+    await mongo_db.components.create_index('start')
+    await mongo_db.components.create_index('end')
+    await mongo_db.components.create_index('employee')
 
 
 
@@ -72,7 +310,7 @@ async def main(config):
 
     type_registry = TypeRegistry(fallback_encoder=timedelta_encoder)
     codec_options = CodecOptions(type_registry=type_registry)
-    shifts_collection = mongo_db.get_collection('shifts', codec_options=codec_options)
+    shifts_collection = mongo_db.get_collection('components', codec_options=codec_options)
 
     await shifts_collection.create_index('start')
     await shifts_collection.create_index('end')
@@ -111,7 +349,7 @@ async def main(config):
                 ops.append(ReplaceOne({'employee': employee_id, 'start': obj['start']}, obj, upsert=True))
 
         if len(ops):
-            await mongo_db.shifts.bulk_write(ops)
+            await mongo_db.components.bulk_write(ops)
 
         min_date = max_date
 
