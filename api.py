@@ -2,26 +2,25 @@
 # provide current / historical object info
 # /shifts, /employees
 # gunicorn?
-# api.py
-import os
-import json
-import asyncio
-import weakref
-import pymongo
-import configparser
-from pprint import pprint
-import motor.motor_asyncio
-from functools import reduce
-from bson.json_util import dumps
-from aiohttp import web, WSCloseCode
-from datetime import datetime, date, timedelta, timezone
-from util import get_async_rpc_connection, parse_timecards, merge_nearby_shifts, get_mongo_db
+from aiohttp import web
+from aiojobs.aiohttp import setup, spawn
+from util import get_mongo_db
 
-from init import init
-import models
+EMPLOYEE_IDS = ['50', '53', '71', '61', '82', '73', '55', '72', '66', '62', '69',
+        '67', '80', '79', '57', '51', '70', '74', '54', '56', '58', '59', '64', '65']
 
 routes = web.RouteTableDef()
-EMPLOYEE_IDS = ['50', '53', '71', '61', '82', '73', '55', '72', '66', '62', '69', '67', '80', '79', '57', '51', '70', '74', '54', '56', '58', '59', '64', '65']
+
+async def coro():
+    print('sleeping...')
+    await asyncio.sleep(2)
+    print('done sleeping')
+
+
+@routes.get('/recheck')
+async def recheck(request):
+    await spawn(request, coro())
+    return web.Response(text='checking')
 
 
 @routes.get('/data/shifts')
@@ -66,25 +65,11 @@ async def get_shifts(request):
     pprint(query)
     shifts = await db.shifts.find(query).sort([('start', pymongo.ASCENDING)]).limit(limit).to_list(limit)
 
-    return json_response({
+    return web.Response(text=dumps({
         'employees': employees,
         'employeeIds': [employee_id] if employee_id is not None else EMPLOYEE_IDS,
         'shifts': shifts,
-    });
-
-
-def json_response(d):
-    return web.Response(text=dumps(d, default=default))
-
-
-def default(o):
-    if isinstance(o, datetime):
-        return o.isoformat()
-    if isinstance(o, timedelta):
-        return int(o.total_seconds() * 1000)
-
-def utc_to_local(dt: datetime):
-    return dt.replace(tzinfo=timezone.utc).astimezone(tz=None)
+    }))
 
 
 def parse_qs(query):
@@ -105,51 +90,13 @@ def parse_qs(query):
     return result
 
 
-async def background(app):
-    try:
-        while True:
-            # check db
-            changes = False
-            state = {}
-            if changes:
-                for ws in set(app['websockets']):
-                    await ws.send_str(json.dumps(state, default=default))
-            await asyncio.sleep(1000)
-    except asyncio.CancelledError:
-        pass
-    finally:
-        pass
-
-
-async def on_shutdown(app):
-    await app['background'].cancel()
-    for ws in set(app['websockets']):
-        await ws.close(code=WSCloseCode.GOING_AWAY,
-                       message='Server shutdown')
-    #await app['proxy'].close()
-    app['db'].close()
-
-
-async def on_startup(app):
-    app['background'] = asyncio.create_task(background(app))
-    #app['proxy'] = get_async_rpc_connection(config['AMG'])
-
-
 async def main():
-    configpath = os.path.join(os.path.dirname(__file__), 'config.ini')
-    if not os.path.isfile(configpath):
-        raise RuntimeError('no config file found')
     config = configparser.ConfigParser()
-    config.read(configpath)
-
+    config.read('config.ini')
     app = web.Application()
-    app['websockets'] = weakref.WeakSet()
-
     app.add_routes(routes)
     app['db'] = await get_mongo_db(config['MONGO'])
-    app.on_startup.append(on_startup)
-    app.on_shutdown.append(on_shutdown)
-
+    setup(app)
     return app
 
 

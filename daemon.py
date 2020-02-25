@@ -4,61 +4,57 @@
 
 # init.py
 import os
+import pymongo
 import asyncio
 import aiomysql
-import pymongo
 import configparser
-from typing import List
+from datetime import datetime, timedelta
+from pymongo.errors import BulkWriteError
+from pymongo import ReplaceOne
+from bson.codec_options import CodecOptions, TypeRegistry
+
+from util import get_async_rpc_connection, get_mysql_db, get_mongo_db, EmployeeShiftColor
+
 from pprint import pprint
-from functools import reduce
-from pymongo.errors import ConnectionFailure
-from bson.codec_options import TypeRegistry, CodecOptions
-from bson.objectid import ObjectId
-import motor.motor_asyncio
-from enum import Enum, IntEnum
-from aioitertools import groupby, enumerate
-from datetime import timedelta, datetime, timezone
-from itertools import zip_longest, islice
-import models
-
-from util import get_async_rpc_connection, merge_nearby_shifts, parse_timecards_2, get_mysql_db, get_mongo_db
 
 
-async def init(config, force=False):
+async def init(mongo_db, mysql_db, proxy):
+    mysql_cursor = await mysql_db.cursor(aiomysql.DictCursor)
+    ops = []
+
+    await mysql_cursor.execute('select id,Code,Name,MiddleName,LastName,HireDate from tam.inf_employee')
+    async for employee in mysql_cursor:
+        #color = models.EmployeeShiftColor(i % len(models.EmployeeShiftColor))
+        employee_id = str(employee['id'])
+        employee['id'] = employee_id
+        employee['Color'] = EmployeeShiftColor.RED
+        ops.append(ReplaceOne({'id': employee_id}, employee, upsert=True))
+
+    await mongo_db.employees.create_index('id', unique=True)
+    await mongo_db.employees.bulk_write(ops)
+
+    await mongo_db.drop_collection('state')
+    await mongo_db.create_collection('state', capped=True, size=10000)
+
+    await mongo_db.shifts.create_index('start')
+    await mongo_db.shifts.create_index('end')
+    await mongo_db.shifts.create_index('employee')
+
+
+
+async def main(config):
+    # do some init stuff
+    # on interval, recheck
+
     mysql_client = await get_mysql_db(config['MYSQL'])
     mongo_client = await get_mongo_db(config['MONGO'])
 
     amg_rpc_proxy = get_async_rpc_connection(config['AMG'])
 
     mongo_db = mongo_client.timeclock
+    await init(mongo_db, mysql_client, amg_rpc_proxy)
 
-    collection_names = await mongo_db.list_collection_names()
-
-    mysql_cursor = await mysql_client.cursor(aiomysql.DictCursor)
-    if force or 'employees' not in collection_names:
-        await mysql_cursor.execute('select id,Code,Name,MiddleName,LastName,HireDate from tam.inf_employee')
-
-        employee_ids = [];
-        employees = {}
-        async for i, employee in enumerate(wrap_fetchone(mysql_cursor)):
-            color = models.EmployeeShiftColor(i % len(models.EmployeeShiftColor))
-            employee_id = str(employee['id'])
-            employee_ids.append(employee_id)
-            employee['id'] = employee_id
-            employee['Color'] = color
-            employees[employee['id']] = employee;
-
-        await mongo_db.drop_collection('employees')
-        col = mongo_db.get_collection('employees')
-        await col.create_index('id', unique=True)
-        await col.insert_many(employees.values())
-    else:
-        employees = await mongo_db.employees.find({}).to_list(2000)
-        employee_ids = [empl['id'] for empl in employees]
-
-    if force or 'polls' not in collection_names:
-        await mongo_db.drop_collection('polls')
-
+    mysql_cursor = await mysql_client.cursor()
     latest_poll = await mongo_db.polls.find_one({}, sort=[('date', pymongo.DESCENDING)])
     if latest_poll is None:
         await mysql_cursor.execute('select StartTime from tam.polllog order by StartTime desc')
@@ -70,83 +66,62 @@ async def init(config, force=False):
         result = await mongo_client.timeclock.polls.insert_many(polls)
         latest_poll = await mongo_db.polls.find_one({'_id': result.inserted_ids[0]})
 
+    if latest_poll is None:
+        raise Exception('no polls? somethings broken')
+
 
     type_registry = TypeRegistry(fallback_encoder=timedelta_encoder)
     codec_options = CodecOptions(type_registry=type_registry)
     shifts_collection = mongo_db.get_collection('shifts', codec_options=codec_options)
 
-    if force or 'shifts' not in collection_names:
-        await mongo_db.drop_collection('shifts')
-        await mongo_db.drop_collection('sync_history')
-        # problematic
-        #await shifts_collection.create_index([('start', pymongo.DESCENDING), ('employee', pymongo.ASCENDING)], unique=True)
-        await shifts_collection.create_index('start')
-        await shifts_collection.create_index('end')
-        await shifts_collection.create_index('employee')
+    await shifts_collection.create_index('start')
+    await shifts_collection.create_index('end')
+    await shifts_collection.create_index('employee')
 
-    latest_sync = await mongo_db.sync_history.find_one({}, sort=[('date', pymongo.DESCENDING)])
+    #latest_sync = await mongo_db.sync_history.find_one({}, sort=[('date', pymongo.DESCENDING)])
 
     now = datetime.now()
     interval = timedelta(weeks=2)
-
-    if latest_sync is None:
-        min_date = get_sunday(now - timedelta(days=365))
-
-    # no poll since last sync
-    #elif latest_sync['poll']['date'] >= latest_poll['date']:
-    #    return
-    else:
-        min_date = get_sunday(now)
-
+    min_date = get_sunday(now - timedelta(days=365))
+    
     shifts = []
+    employee_ids = [int(empl['id']) for empl in await mongo_db.employees.find({}).to_list(1000)]
+    offset = timedelta(hours=5)
     while min_date < now:
         max_date = min_date + interval
         print(f'{min_date} - {max_date}')
-        shifts = await get_employee_shifts(amg_rpc_proxy, employee_ids, (min_date, max_date))
-        if len(shifts):
-            await shifts_collection.insert_many(shifts)
+
+        employee_timecards = await amg_rpc_proxy.GetTimecards(employee_ids, min_date, max_date, False)
+        now = datetime.now()
+        ops = []
+        for each in employee_timecards:
+            employee_id, timecards = each['EmployeeId'], each['Timecards']
+
+            for item in timecards:
+                punches = []
+                obj = {'punches': punches, 'employee': employee_id}
+                for k0, k1 in [('date', 'Date'), ('isManual', 'IsManual'), ('hours', 'Reg')]:
+                    obj[k0] = item.get(k1)
+                for k0, k1 in [('start', 'StartPunch'), ('end', 'StopPunch')]:
+                    if (p := item.get(k1)):
+                        obj[k0] = p['OriginalDate'] + offset
+                        punches.append(p['Id'])
+                    else:
+                        obj[k0] = None
+                ops.append(ReplaceOne({'employee': employee_id, 'start': obj['start']}, obj, upsert=True))
+
+        if len(ops):
+            await mongo_db.shifts.bulk_write(ops)
+
         min_date = max_date
 
-    await mongo_db.sync_history.insert_one({'poll': latest_poll, 'date': now, 'min': min_date})
 
-    last_employee = None
-    last_start = None
-    last_end = None
-    last_id = None
-    last_duration = None
-    duplicates = []
-    async for doc in shifts_collection.find().sort([('employee', pymongo.ASCENDING), ('start', pymongo.ASCENDING)]):
-        _id = doc['_id']
-        employee = doc['employee']
-        if employee != last_employee:
-            last_employee = employee
-            last_start = None
-            last_end = None
-            last_id = None
-            last_duration = None
+    await amg_rpc_proxy.close()
+    await mysql_cursor.close()
+    mongo_client.close()
 
-        start = doc['start']
-        end = doc['end']
-        duration = doc['duration']
 
-        if last_end is not None and start is not None and start < last_end:
-            if duration is None:
-                duplicates.append(_id)
-            elif last_duration is None:
-                duplicates.append(last_id)
-                pass
-            else:
-                duplicates.append(last_id if duration > last_duration else _id)
-
-        last_start = start
-        last_end = end
-        last_id = _id
-        last_duration = duration
-
-    if len(duplicates):
-        await shifts_collection.delete_many({'_id': {'$in': duplicates}});
-
-    # calculate count, avg / stdDev for start, end, duration of shift
+async def update_shift_stats(db):
     pipeline = [
       {'$match': {'end': {'$ne': None}}},
       {'$addFields': {
@@ -200,48 +175,8 @@ async def init(config, force=False):
     ]
 
     # add stats for each employee
-    async for doc in shifts_collection.aggregate(pipeline):
+    async for doc in db.shifts.aggregate(pipeline):
         pass
-
-
-    await amg_rpc_proxy.close()
-    await mysql_cursor.close()
-    mongo_client.close()
-
-
-async def get_employee_shifts(proxy, employee_ids, date_range):
-    ids = [int(s) for s in employee_ids]
-    employee_timecards = await proxy.GetTimecards(ids, *date_range, False)
-    now = datetime.now()
-    shifts = []
-    for each in employee_timecards:
-        employee_id, timecards = each['EmployeeId'], each['Timecards']
-
-        for components in parse_timecards_2(employee_id, timecards):
-            start_date = components[0]['start']
-            end_date = components[-1]['end']
-            is_complete = end_date is not None
-
-            total_duration = reduce(lambda t, c: (c['end'] or now) - c['start'], components, timedelta())
-
-            shift_state = models.ShiftState.Complete if is_complete else models.ShiftState.Incomplete
-
-            is_flagged = False
-            if not is_complete and (total_duration and total_duration > timedelta(hours=24)):
-                is_flagged = True
-            elif not is_complete and (now - start_date) > timedelta(hours=24):
-                is_flagged = True
-
-            shifts.append({
-                'flagged': is_flagged,
-                'employee': str(employee_id),
-                'components': components,
-                'start': start_date,
-                'end': end_date,
-                'duration': total_duration if is_complete else timedelta(),
-                'state': shift_state
-            })
-    return shifts
 
 
 
@@ -259,42 +194,14 @@ def get_sunday(dt: datetime):
     return dt
 
 
-async def wrap_fetchone(mysql_cursor: aiomysql.Cursor):
-    while (item := await mysql_cursor.fetchone()):
-        yield item
-
-
-def seq_grouper(it, max_diff=timedelta(hours=4)):
-    last_end = None
-    items = []
-    for pair in it:
-        start, end = pair
-        if last_end is None or (start - last_end) < max_diff:
-            items.append(pair)
-        elif len(items):
-            yield items
-            items = [pair]
-        last_end = end
-
-    if len(items):
-        yield items
-
-
-def grouper(iterable, n=2, fillvalue=None):
-    args = [iter(iterable)] * n
-    return zip_longest(*args, fillvalue=fillvalue)
-
-
 if __name__ == '__main__':
-    config_path = os.path.join(os.path.dirname(__file__), 'config.ini');
-    if not os.path.isfile(config_path):
-        raise RuntimeError('no config file found')
     config = configparser.ConfigParser()
-    config.read(config_path)
+    config.read('config.ini')
 
-    asyncio.run(init(config, True))
+    asyncio.run(main(config))
 
 
+"""
 # daemon.py
 # connect to database                            check that connection is established
 #   on disconnect, retry reconnect with backoff  check that reconnect attempted after disconnect
@@ -572,3 +479,4 @@ if __name__ == '__main__':
     config = configparser.ConfigParser()
     config.read('config.ini')
     asyncio.run(main(config))
+"""

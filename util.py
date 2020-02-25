@@ -1,9 +1,9 @@
 # util.py
 import os
-import motor
 import asyncio
 import aiomysql
 import xmlrpc.client
+import motor.motor_asyncio
 from datetime import timedelta
 from pymongo.errors import ConnectionFailure
 from aiohttp_xmlrpc.client import ServerProxy
@@ -24,7 +24,7 @@ async def get_mongo_db(config):
     connect to mongodb, check connection
     '''
     host, port, user, password = [os.environ.get(f'MONGO_{k.upper()}') or config.get(k) for k in ['host', 'port', 'user', 'password']]
-    url = f'mongodb://{user}:{password}@{host}:{port}'
+    url = f'mongodb://{host}:{port}'
     conn = motor.motor_asyncio.AsyncIOMotorClient(url)
 
     try:
