@@ -33,57 +33,56 @@ async def init(mongo_db, mysql_db, proxy):
     await mongo_db.employees.create_index('id', unique=True)
     await mongo_db.employees.bulk_write(ops)
 
-    await mongo_db.drop_collection('state')
-    await mongo_db.create_collection('state', capped=True, size=10000)
+    await mongo_db.create_collection('state', capped=True, size=100000)
 
-    await mongo_db.drop_collection('shifts')
-    await mongo_db.command({
-        'create': 'shifts',
-        'viewOn': 'components',
-        'pipeline': [
-            {
-                '$sort': { 'employee': 1, 'start': 1 }
-            },
-            {
-                '$match': { 'start': { '$ne': None }, }
-            },
-            {
-                '$addFields': {
-                    #'end': { '$ifNull': [ '$end', '$$NOW' ] },
-                    'state': {'$cond': [
-                        {'$ne': ['$end', None]},
-                        'complete',
-                        'incomplete'
-                    ]}}
-            },
-            {
-                '$addFields': { 'duration': { '$subtract': [ '$end', '$start' ] } }
-            },
-            {
-                '$group': {
-                    '_id': { 'date': '$date', 'employee': '$employee' }, 
-                    'root': { '$first': '$$ROOT' }, 
-                    #'start': { '$first': '$start' }, 
-                    #'end': { '$last': '$end' }, 
-                    'duration': { '$sum': '$duration' }, 
-                    'components': { '$push': { 'start': '$start', 'end': '$end', 'duration': '$duration' } }
-                }
-            },
-            {
-                '$addFields': {
-                    'root.components': '$components', 
-                    'root.duration': { '$divide': [ '$root.duration', 3600000 ] }, 
-                    'root.start': '$start', 
-                    'root.end': '$end'
-                }
-            },
-            {
-                '$replaceRoot': { 'newRoot': '$root' }
-            },
-            #{
-            #    '$match': { 'duration': { '$lt': 24 } }
-            #}
-        ]})
+    # need to replace this to calculate duration on the fly
+    #await mongo_db.command({
+    #    'create': 'shifts',
+    #    'viewOn': 'components',
+    #    'pipeline': [
+    #        {
+    #            '$sort': { 'employee': 1, 'start': 1 }
+    #        },
+    #        {
+    #            '$match': { 'start': { '$ne': None }, }
+    #        },
+    #        {
+    #            '$addFields': {
+    #                #'end': { '$ifNull': [ '$end', '$$NOW' ] },
+    #                'state': {'$cond': [
+    #                    {'$ne': ['$end', None]},
+    #                    'complete',
+    #                    'incomplete'
+    #                ]}}
+    #        },
+    #        {
+    #            '$addFields': { 'duration': { '$subtract': [ '$end', '$start' ] } }
+    #        },
+    #        {
+    #            '$group': {
+    #                '_id': { 'date': '$date', 'employee': '$employee' }, 
+    #                'root': { '$first': '$$ROOT' }, 
+    #                #'start': { '$first': '$start' }, 
+    #                #'end': { '$last': '$end' }, 
+    #                'duration': { '$sum': '$duration' }, 
+    #                'components': { '$push': { 'start': '$start', 'end': '$end', 'duration': '$duration' } }
+    #            }
+    #        },
+    #        {
+    #            '$addFields': {
+    #                'root.components': '$components', 
+    #                'root.duration': { '$divide': [ '$root.duration', 3600000 ] }, 
+    #                'root.start': '$start', 
+    #                'root.end': '$end'
+    #            }
+    #        },
+    #        {
+    #            '$replaceRoot': { 'newRoot': '$root' }
+    #        },
+    #        #{
+    #        #    '$match': { 'duration': { '$lt': 24 } }
+    #        #}
+    #    ]})
     await mongo_db.components.create_index('start')
     await mongo_db.components.create_index('end')
     await mongo_db.components.create_index('employee')
@@ -121,9 +120,9 @@ async def main(config):
     latest_sync = await mongo_db.sync_history.find_one({}, sort=[('date', pymongo.DESCENDING)])
 
     # useful if encoding strange types
-    #type_registry = TypeRegistry(fallback_encoder=timedelta_encoder)
-    #codec_options = CodecOptions(type_registry=type_registry)
-    #shift_components_col = mongo_db.get_collection('components', codec_options=codec_options)
+    type_registry = TypeRegistry(fallback_encoder=timedelta_encoder)
+    codec_options = CodecOptions(type_registry=type_registry)
+    shifts_col = mongo_db.get_collection('shifts', codec_options=codec_options)
 
     now = datetime.now()
     interval = timedelta(days=14)
@@ -138,15 +137,91 @@ async def main(config):
 
     async for group, max_date in update_shifts(amg_rpc_proxy, employee_ids, min_date, now):
         for component in group:
-            pprint(component)
+            employee_id, start, end = [component[k] for k in ['employee', 'start', 'end']]
+
+            if start is None:
+                continue
+
+            # existing component, perhaps it has been finished
+            doc = await mongo_db.components.find_one({'employee': employee_id, 'start': start})
+            if doc is None:
+                result = await mongo_db.components.insert_one(component)
+                component_id = result.inserted_id
+            else:
+                component_id = doc['_id']
+                await mongo_db.components.update_one({'_id': component_id}, {'$set': component})
+                shift_id = doc['shift']
+                shift = await mongo_db.shifts.find_one_and_update({'_id': shift_id}, {'$set': {'end': end}})
+                continue
+
+            component['_id'] = component_id
+
+            doc = await shifts_col.find_one({
+                'employee': employee_id,
+                'end': {'$lte': start, '$gt': start - timedelta(hours=4)}
+                }, sort=[('end', -1)])
+
+            duration = end - start if end is not None else timedelta()
+            shift_state = 'incomplete' if end is None else 'complete'
+
+            if doc is None:
+                result = await shifts_col.insert_one({'employee': employee_id,
+                    'components': [component_id], 'start': start, 'end': end,
+                    'duration': duration, 'state': shift_state })
+                await mongo_db.components.update_one({'_id': component_id}, {'$set': {'shift': result.inserted_id}})
+            else:
+                shift_id = doc['_id']
+                if duration is not None:
+                    duration += timedelta(microseconds=doc['duration'])
+                else:
+                    duration = timedelta()
+                await shifts_col.update_one({'_id': shift_id}, {
+                    '$push': {'components': component_id},
+                    '$set': {
+                        'end': end,
+                        'state': shift_state,
+                        'duration': duration,
+                    }})
+                await mongo_db.components.update_one({'_id': component_id}, {'$set': {'shift': shift_id}})
+
 
     await mongo_db.sync_history.insert_one({'date': now, 'min': min_date, 'max': max_date})
 
-    print(await mongo_db.shifts.count_documents({}))
+    # lookup current state
+    #   remove any end != null
+    # lookup each 
+    # also lookup incomplete
+    # deduplicate
 
-    async for row in mongo_db.shifts.find({'state': 'incomplete', 'duration': {'$lt': 24*60*60*1000}}):
-        pprint(row)
-    
+    values = []
+    next_state = {}
+    current_state = await mongo_db.state.find_one({}, sort=[('date', pymongo.DESCENDING)])
+
+
+    value_ids = set()
+    async for value in mongo_db.shifts.aggregate([
+        {'$match': {'state': 'incomplete'}},
+        {'$sort': {'start': -1}},
+        {'$group': {'_id': '$employee', 'value': {'$first': '$$ROOT'}}},
+        {'$replaceRoot': {'newRoot': '$value'}},
+        {'$sort': {'start': -1}},
+        ]):
+        value_ids.add(value['_id'])
+        values.append(value)
+
+    async for value in mongo_db.state.aggregate([
+        {'$sort': {'date': -1}},
+        {'$limit': 1},
+        {'$unwind': '$values'},
+        {'$match': {'$expr': {'$eq': ['$values.end', None]}}}, # remove shifts that have ended
+        {'$lookup': {'from': 'shifts', 'localField': 'values._id', 'foreignField': '_id', 'as': 'nextValues'}},
+        {'$unwind': '$nextValues'},
+        {'$replaceRoot': {'newRoot': '$nextValues'}},
+        ]):
+        if value['_id'] not in value_ids:
+            values.append(value)
+
+    await mongo_db.state.insert_one({'date': now, 'values': values})
 
     await amg_rpc_proxy.close()
     await mysql_cursor.close()
@@ -304,9 +379,6 @@ async def main():
                 await cur.execute('SELECT version()')
                 version, = await cur.fetchone()
                 print(f'{version=}')
-
-                #await cur.execute('describe polllog')
-                #print(await cur.fetchall())
 
                 await cur.execute('select StartTime from polllog limit 1')
                 result = await cur.fetchone()
