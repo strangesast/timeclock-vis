@@ -110,18 +110,21 @@ async def main(config):
     interval = timedelta(hours=1)
     buf = 10 # added to interval, or used as timeout between retries
 
-    while True:
-        now = datetime.now()
-        latest_poll = await get_poll(mongo_db, mysql_client)
-        s = (latest_poll + interval - now).total_seconds() + buf
-        print(f'sleeping for {s} seconds')
-        # wait until next poll, then update again
-        await asyncio.sleep(s)
-        await update(mongo_db, amg_rpc_proxy)
-
-    await amg_rpc_proxy.close()
-    mysql_client.close()
-    mongo_client.close()
+    try:
+        while True:
+            now = datetime.now()
+            latest_poll = await get_poll(mongo_db, mysql_client)
+            s = (latest_poll + interval - now).total_seconds() + buf
+            print(f'sleeping for {s} seconds')
+            # wait until next poll, then update again
+            await asyncio.sleep(s)
+            await update(mongo_db, amg_rpc_proxy)
+    except asyncio.CancelledError:
+        pass
+    finally:
+        await amg_rpc_proxy.close()
+        mysql_client.close()
+        mongo_client.close()
 
 
 async def get_poll(mongo_db, mysql_client):
@@ -357,4 +360,9 @@ if __name__ == '__main__':
     config = configparser.ConfigParser()
     config.read('config.ini')
 
-    asyncio.run(main(config))
+    try:
+        asyncio.run(main(config))
+    except KeyboardInterrupt:
+        pass
+    finally:
+        print('closing')
