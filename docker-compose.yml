@@ -28,6 +28,15 @@ services:
       - SERVER_BIND_PORT=8081
     volumes:
       - ./server/config.ini:/app/config.ini
+  daemon:
+    image: strangesast/timeclock-vis_daemon
+    build:
+      context: .
+      dockerfile: docker/daemon/Dockerfile
+    depends_on:
+      - mongo
+    volumes:
+      - ./config.ini:/app/config.ini
   mongo:
     image: mongo
     ports:
