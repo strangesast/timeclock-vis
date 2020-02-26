@@ -42,35 +42,47 @@ async def init(mongo_db, mysql_db, proxy):
         'viewOn': 'components',
         'pipeline': [
             {
-                '$sort': { 'start': 1, 'employee': 1 }
-            }, {
+                '$sort': { 'employee': 1, 'start': 1 }
+            },
+            {
                 '$match': { 'start': { '$ne': None }, }
-            }, {
-                '$addFields': { 'end': { '$ifNull': [ '$end', '$$NOW' ] }
-                }
-            }, {
+            },
+            {
+                '$addFields': {
+                    #'end': { '$ifNull': [ '$end', '$$NOW' ] },
+                    'state': {'$cond': [
+                        {'$ne': ['$end', None]},
+                        'complete',
+                        'incomplete'
+                    ]}}
+            },
+            {
                 '$addFields': { 'duration': { '$subtract': [ '$end', '$start' ] } }
-            }, {
+            },
+            {
                 '$group': {
                     '_id': { 'date': '$date', 'employee': '$employee' }, 
                     'root': { '$first': '$$ROOT' }, 
-                    'start': { '$first': '$start' }, 
-                    'end': { '$last': '$end' }, 
+                    #'start': { '$first': '$start' }, 
+                    #'end': { '$last': '$end' }, 
                     'duration': { '$sum': '$duration' }, 
                     'components': { '$push': { 'start': '$start', 'end': '$end', 'duration': '$duration' } }
                 }
-            }, {
+            },
+            {
                 '$addFields': {
                     'root.components': '$components', 
                     'root.duration': { '$divide': [ '$root.duration', 3600000 ] }, 
                     'root.start': '$start', 
                     'root.end': '$end'
                 }
-            }, {
+            },
+            {
                 '$replaceRoot': { 'newRoot': '$root' }
-            }, {
-                '$match': { 'duration': { '$lt': 24 } }
-            }
+            },
+            #{
+            #    '$match': { 'duration': { '$lt': 24 } }
+            #}
         ]})
     await mongo_db.components.create_index('start')
     await mongo_db.components.create_index('end')
@@ -106,32 +118,52 @@ async def main(config):
         raise Exception('no polls? somethings broken')
 
 
-    type_registry = TypeRegistry(fallback_encoder=timedelta_encoder)
-    codec_options = CodecOptions(type_registry=type_registry)
-    shifts_collection = mongo_db.get_collection('components', codec_options=codec_options)
+    latest_sync = await mongo_db.sync_history.find_one({}, sort=[('date', pymongo.DESCENDING)])
 
-    await shifts_collection.create_index('start')
-    await shifts_collection.create_index('end')
-    await shifts_collection.create_index('employee')
-
-    #latest_sync = await mongo_db.sync_history.find_one({}, sort=[('date', pymongo.DESCENDING)])
+    # useful if encoding strange types
+    #type_registry = TypeRegistry(fallback_encoder=timedelta_encoder)
+    #codec_options = CodecOptions(type_registry=type_registry)
+    #shift_components_col = mongo_db.get_collection('components', codec_options=codec_options)
 
     now = datetime.now()
-    interval = timedelta(weeks=2)
-    min_date = get_sunday(now - timedelta(days=365))
-    
-    shifts = []
+    interval = timedelta(days=14)
+
+    if latest_sync is None:
+        print('running initialization.  this may take a while...')
+        min_date = get_sunday(now - timedelta(days=365))
+    else:
+        min_date = min(latest_sync['max'] - interval, get_sunday(now))
+
     employee_ids = [int(empl['id']) for empl in await mongo_db.employees.find({}).to_list(1000)]
+
+    async for group, max_date in update_shifts(amg_rpc_proxy, employee_ids, min_date, now):
+        for component in group:
+            pprint(component)
+
+    await mongo_db.sync_history.insert_one({'date': now, 'min': min_date, 'max': max_date})
+
+    print(await mongo_db.shifts.count_documents({}))
+
+    async for row in mongo_db.shifts.find({'state': 'incomplete', 'duration': {'$lt': 24*60*60*1000}}):
+        pprint(row)
+    
+
+    await amg_rpc_proxy.close()
+    await mysql_cursor.close()
+    mongo_client.close()
+
+
+async def update_shifts(proxy, employee_ids, min_date, end_date = datetime.now(), interval = timedelta(days=14)):
     offset = timedelta(hours=5)
-    while min_date < now:
+    while min_date < end_date:
         max_date = min_date + interval
         print(f'{min_date} - {max_date}')
 
-        employee_timecards = await amg_rpc_proxy.GetTimecards(employee_ids, min_date, max_date, False)
+        employee_timecards = await proxy.GetTimecards(employee_ids, min_date, max_date, False)
         now = datetime.now()
-        ops = []
+        group = []
         for each in employee_timecards:
-            employee_id, timecards = each['EmployeeId'], each['Timecards']
+            employee_id, timecards = str(each['EmployeeId']), each['Timecards']
 
             for item in timecards:
                 punches = []
@@ -144,17 +176,11 @@ async def main(config):
                         punches.append(p['Id'])
                     else:
                         obj[k0] = None
-                ops.append(ReplaceOne({'employee': employee_id, 'start': obj['start']}, obj, upsert=True))
+                # this breaks if start time was amended
+                group.append(obj)
 
-        if len(ops):
-            await mongo_db.components.bulk_write(ops)
-
+        yield group, max_date
         min_date = max_date
-
-
-    await amg_rpc_proxy.close()
-    await mysql_cursor.close()
-    mongo_client.close()
 
 
 async def update_shift_stats(db):
