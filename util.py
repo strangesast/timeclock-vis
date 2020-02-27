@@ -1,15 +1,10 @@
 # util.py
 import os
-import asyncio
-import aiomysql
-import xmlrpc.client
-import motor.motor_asyncio
 from datetime import timedelta
-from pymongo.errors import ConnectionFailure
-from aiohttp_xmlrpc.client import ServerProxy
 
 
 async def get_mysql_db(config):
+    import aiomysql
     '''
     connect to mysql/mariadb database
     '''
@@ -20,6 +15,8 @@ async def get_mysql_db(config):
 
 
 async def get_mongo_db(config):
+    import motor.motor_asyncio
+    from pymongo.errors import ConnectionFailure
     '''
     connect to mongodb, check connection
     '''
@@ -36,6 +33,9 @@ async def get_mongo_db(config):
 
 
 def get_async_rpc_connection(config):
+    import asyncio
+    import xmlrpc.client
+    from aiohttp_xmlrpc.client import ServerProxy
     host, port, username, password = [os.environ.get(f'amg_{k}'.upper()) or config.get(k)
             for k in ['host', 'port', 'username', 'password']]
     loop = asyncio.get_running_loop()

@@ -1,0 +1,7 @@
+from python:3.8
+workdir /app
+copy api.requirements.txt requirements.txt
+run pip install -r requirements.txt
+copy api.py util.py ./
+
+cmd ["gunicorn", "api:main", "--bind", "localhost:80", "--worker-class", "aiohttp.GunicornWebWorker"]

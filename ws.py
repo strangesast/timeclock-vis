@@ -3,6 +3,7 @@
 # accept websocket connections at /socket
 # update clients as required
 # log?
+import configparser
 from aiohttp import web
 from util import get_mongo_db
 from pymongo.cursor import CursorType
@@ -43,7 +44,6 @@ async def main():
     config = configparser.ConfigParser()
     config.read('config.ini')
     app = web.Application()
-    app.add_routes(routes)
     app['db'] = await get_mongo_db(config['MONGO'])
     app.add_routes([web.get('/ws', websocket_handler)])
     return app

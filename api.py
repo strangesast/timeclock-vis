@@ -2,6 +2,7 @@
 # provide current / historical object info
 # /shifts, /employees
 # gunicorn?
+import configparser
 from aiohttp import web
 from aiojobs.aiohttp import setup, spawn
 from util import get_mongo_db
@@ -26,7 +27,6 @@ async def recheck(request):
 @routes.get('/data/shifts')
 async def get_shifts(request):
     q = parse_qs(request.query)
-
 
     min_date, max_date = q.get('minDate'), q.get('maxDate')
     limit = 2000
@@ -62,7 +62,6 @@ async def get_shifts(request):
         employees = await db.employees.find({}).to_list(100)
         employees = {id: employee for employee in employees if (id := employee.get('id'))}
 
-    pprint(query)
     shifts = await db.shifts.find(query).sort([('start', pymongo.ASCENDING)]).limit(limit).to_list(limit)
 
     return web.Response(text=dumps({

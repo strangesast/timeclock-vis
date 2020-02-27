@@ -7,28 +7,27 @@ services:
     image: strangesast/timeclock-vis_nginx
     ports:
       - '8080:8080'
-#    depends_on:
-#      - server
-#  server:
-#    build:
-#      context: .
-#      dockerfile: docker/server/Dockerfile
-#    image: strangesast/timeclock-vis_server
-#    depends_on:
-#      - mongo
-#    environment:
-#      - env=production
-#      - MONGO_HOST=mongo
-#      - MONGO_PORT=27017
-#      - MYSQL_PORT=3306
-#      - MYSQL_HOST=host.docker.internal
-#      - AMG_HOST=host.docker.internal
-#      - AMG_PORT=3003
-#      - AMG_USER=admin
-#      - SERVER_BIND_PORT=8081
-#    volumes:
-#      - ./config.ini:/app/config.ini
-
+    depends_on:
+      - api
+  api:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+    image: strangesast/timeclock-vis_api
+    depends_on:
+      - mongo
+    environment:
+      - env=production
+      - MONGO_HOST=mongo
+      - MONGO_PORT=27017
+      - MYSQL_PORT=3306
+      - MYSQL_HOST=host.docker.internal
+      - AMG_HOST=host.docker.internal
+      - AMG_PORT=3003
+      - AMG_USER=admin
+      - SERVER_BIND_PORT=8081
+    volumes:
+      - ./config.ini:/app/config.ini
   daemon:
     image: strangesast/timeclock-vis_daemon
     build:
@@ -41,7 +40,15 @@ services:
       - AMG_HOST=host.docker.internal
     volumes:
       - ./config.ini:/app/config.ini
-
+  ws:
+    image: strangesast/timeclock-vis_ws
+    build:
+      context: .
+      dockerfile: docker/ws/Dockerfile
+    depends_on:
+      - mongo
+    volumes:
+      - ./config.ini:/app/config.ini
   mongo:
     image: mongo
     ports:
