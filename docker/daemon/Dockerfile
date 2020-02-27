@@ -3,4 +3,4 @@ workdir /app
 copy daemon.requirements.txt requirements.txt
 run pip install -r requirements.txt
 copy daemon.py util.py ./
-cmd ["python3.8", "daemon.py"]
+cmd ["python3.8", "-u", "daemon.py"]

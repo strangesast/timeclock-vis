@@ -4,7 +4,9 @@
 
 # init.py
 import os
+import sys
 import pymongo
+import logging
 import asyncio
 import aiomysql
 import configparser
@@ -14,8 +16,6 @@ from pymongo import ReplaceOne
 from bson.codec_options import CodecOptions, TypeRegistry
 
 from util import get_async_rpc_connection, get_mysql_db, get_mongo_db, EmployeeShiftColor
-
-from pprint import pprint
 
 
 async def init(mongo_db, mysql_db, proxy):
@@ -114,8 +114,8 @@ async def main(config):
         while True:
             now = datetime.now()
             latest_poll = await get_poll(mongo_db, mysql_client)
-            s = (latest_poll + interval - now).total_seconds() + buf
-            print(f'sleeping for {s} seconds')
+            s = max((latest_poll + interval - now).total_seconds(), 0) + buf
+            logging.info(f'sleeping for {s} seconds')
             # wait until next poll, then update again
             await asyncio.sleep(s)
             await update(mongo_db, amg_rpc_proxy)
@@ -158,7 +158,8 @@ async def update(mongo_db, proxy):
     interval = timedelta(days=14)
 
     if latest_sync is None:
-        print('running initialization.  this may take a while...')
+        logging.info('running initialization.  this may take a while...')
+        sys.stdout.flush()
         min_date = get_sunday(now - timedelta(days=365))
     else:
         min_date = min(latest_sync['max'] - interval, get_sunday(now))
@@ -258,7 +259,7 @@ async def update_shifts(proxy, employee_ids, min_date, end_date = datetime.now()
     offset = timedelta(hours=5)
     while min_date < end_date:
         max_date = min_date + interval
-        print(f'{min_date} - {max_date}')
+        logging.info(f'{min_date} - {max_date}')
 
         employee_timecards = await proxy.GetTimecards(employee_ids, min_date, max_date, False)
         now = datetime.now()
@@ -360,9 +361,11 @@ if __name__ == '__main__':
     config = configparser.ConfigParser()
     config.read('config.ini')
 
+    logging.info('daemon starting up')
+    sys.stdout.flush()
     try:
         asyncio.run(main(config))
     except KeyboardInterrupt:
         pass
     finally:
-        print('closing')
+        logging.info('closing')
