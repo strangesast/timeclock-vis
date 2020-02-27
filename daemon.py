@@ -102,9 +102,11 @@ async def main(config):
     amg_rpc_proxy = get_async_rpc_connection(config['AMG'])
 
     mongo_db = mongo_client.timeclock
+    logging.info('running init')
     await init(mongo_db, mysql_client, amg_rpc_proxy)
 
 
+    logging.info('running first update')
     await update(mongo_db, amg_rpc_proxy)
 
     interval = timedelta(hours=1)
@@ -361,6 +363,7 @@ if __name__ == '__main__':
     config = configparser.ConfigParser()
     config.read('config.ini')
 
+    logging.getLogger().setLevel(logging.INFO)
     logging.info('daemon starting up')
     sys.stdout.flush()
     try:

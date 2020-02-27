@@ -54,7 +54,7 @@ async def get_shifts(request):
         }
 
     # uggglyy
-    query['flagged'] = False
+    #query['flagged'] = False
 
     if employee_id := q.get('employee'):
         employee = await db.employees.find_one({'id': employee_id})
@@ -66,7 +66,19 @@ async def get_shifts(request):
         employees = await db.employees.find({}).to_list(100)
         employees = {id: employee for employee in employees if (id := employee.get('id'))}
 
-    shifts = await db.shifts.find(query).sort([('start', pymongo.ASCENDING)]).limit(limit).to_list(limit)
+    print(f'{query=}')
+    # ayy join
+    shifts = []
+    async for shift in db.shifts.aggregate([
+        {'$match': query},
+        {'$unwind': '$components'},
+        {'$lookup': {'from': 'components', 'localField': 'components', 'foreignField': '_id', 'as': 'components'}},
+        {'$unwind': {'path': '$components', 'preserveNullAndEmptyArrays': True}},
+        {'$group': {'_id': '$_id', 'components': {'$push': '$$ROOT.components'}, 'root': {'$first': '$$ROOT'}}},
+        {'$addFields': {'root.components': '$components'}},
+        {'$replaceRoot': {'newRoot': '$root'}}
+        ]):
+        shifts.append(shift)
 
     return web.Response(text=dumps({
         'employees': employees,
@@ -104,4 +116,4 @@ async def main():
 
 
 if __name__ == '__main__':
-    web.run_app(main())
+    web.run_app(main(), host='0.0.0.0', port=8081)

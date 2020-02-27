@@ -1,5 +1,6 @@
 # util.py
 import os
+import logging
 from datetime import timedelta
 
 
@@ -24,7 +25,7 @@ async def get_mongo_db(config):
     url = f'mongodb://{host}:{port}'
     conn = motor.motor_asyncio.AsyncIOMotorClient(url)
 
-    print(f'connecting to mongo at {url}')
+    logging.info(f'connecting to mongo at {url}')
     try:
         await conn.admin.command('ismaster')
     except ConnectionFailure as e:

@@ -50,4 +50,4 @@ async def main():
 
 
 if __name__ == '__main__':
-    web.run_app(main())
+    web.run_app(main(), host='0.0.0.0', port=8082)

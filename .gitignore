@@ -1,7 +1,7 @@
 credentials.ini
 
 __pycache__/
-/env/
+/env*/
 /dist/
 /node_modules/
 /data/
