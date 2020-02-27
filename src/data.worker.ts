@@ -25,7 +25,7 @@ if (GENERATE_MOCKING) {
       const employeeIds = [];
       for (const shift of shifts) {
         if (inFieldOfView([shift.start, shift.end], [minDate, maxDate])) {
-          const employeeId = shift.employee.id;
+          const employeeId = shift.employee;
           if (!employeeIds.includes(employeeId)) {
             filteredEmployees[employeeId] = employees[employeeId];
             employeeIds.push(employeeId);
@@ -41,7 +41,7 @@ if (GENERATE_MOCKING) {
       const employee = employees[employeeId];
       const filteredShifts: models.Shift[] = [];
       for (const shift of shifts) {
-        if (shift.employee.id == employeeId && inFieldOfView([shift.start, shift.end], [minDate, maxDate])) {
+        if (shift.employee == employeeId && inFieldOfView([shift.start, shift.end], [minDate, maxDate])) {
           filteredShifts.push(shift);
         }
       }

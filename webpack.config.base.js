@@ -1,7 +1,8 @@
 const yn = require('yn');
-const WorkerPlugin = require('worker-plugin');
-const HtmlWebpackPlugin = require('html-webpack-plugin')
 const { DefinePlugin } = require('webpack');
+const WorkerPlugin = require('worker-plugin');
+const CopyPlugin = require('copy-webpack-plugin');
+const HtmlWebpackPlugin = require('html-webpack-plugin')
 
 const package = require('./package.json')
 
@@ -47,6 +48,7 @@ module.exports = {
     new DefinePlugin({
       GENERATE_MOCKING: yn(process.env.GENERATE_MOCKING, {default: false}),
     }),
+    new CopyPlugin([ {from: 'static', to: 'static'}, ]),
   ],
   module: {
     rules: [
