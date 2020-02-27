@@ -2,6 +2,7 @@
 # provide current / historical object info
 # /shifts, /employees
 # gunicorn?
+import time
 import pymongo
 import configparser
 from aiohttp import web
@@ -68,17 +69,24 @@ async def get_shifts(request):
 
     print(f'{query=}')
     # ayy join
+    st = time.time()
     shifts = []
+
     async for shift in db.shifts.aggregate([
         {'$match': query},
         {'$unwind': '$components'},
         {'$lookup': {'from': 'components', 'localField': 'components', 'foreignField': '_id', 'as': 'components'}},
         {'$unwind': {'path': '$components', 'preserveNullAndEmptyArrays': True}},
+        {'$addFields': {'components.duration': {'$subtract': [{'$ifNull': ['$components.end', '$$NOW']}, '$components.start']}}},
         {'$group': {'_id': '$_id', 'components': {'$push': '$$ROOT.components'}, 'root': {'$first': '$$ROOT'}}},
         {'$addFields': {'root.components': '$components'}},
-        {'$replaceRoot': {'newRoot': '$root'}}
+        {'$replaceRoot': {'newRoot': '$root'}},
+        {'$addFields': {'duration': {'$map': {'input': '$components', 'as': 'comp', 'in': '$$comp.duration'}}}},
+        {'$addFields': {'duration': {'$sum': '$duration'}}},
         ]):
         shifts.append(shift)
+    t = time.time() - st
+    #print(f'aggregation took {t}s')
 
     return web.Response(text=dumps({
         'employees': employees,
