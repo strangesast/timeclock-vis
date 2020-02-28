@@ -19,17 +19,22 @@ now.setHours(14, 22, 0, 0);
  
 const targetWidth = 30 / 3600000; // 30 pixels per hour
 
-const domainWidth = width / targetWidth;
-const x0 = new Date(+now - domainWidth / 2);
-const x1 = new Date(+now + domainWidth / 2);
+const targetDomainWidth = 2 * 7 * 24 * 60 * 60 * 1000; // two weeks
+const totalWidth = targetDomainWidth * targetWidth;
 
-const initialDomain = [x0, x1];
+const domainWidth = width / targetWidth;
+const d0 = new Date(+now - domainWidth / 2);
+const d1 = new Date(+now + domainWidth / 2);
+
+const initialDomain = [d0, d1];
 
 const margin = {top: 40, left: 10, right: 10, bottom: 10};
 
 const yScale = d3.scaleOrdinal<string, number>();
 
-const xScale = d3.scaleTime().range([width, width + width]).domain(initialDomain);
+const x0 = totalWidth / 2 - width / 2;
+const x1 = x0 + width;
+const xScale = d3.scaleTime().range([x0, x1]).domain(initialDomain);
 
 // const inView = [xScale.invert(width), xScale.invert(width + width)];
 
@@ -95,7 +100,7 @@ const formatTransform = ([x, y]: [number, number]) => {
   return `translate(${x},${y})`;
 }
 const template = ({shifts, employees}: {shifts: Shift[], employees: {[id: string]: Employee}}, dim: number[]) => html`
-<svg width=${dim[0]*3} height=${dim[1]}>
+<svg width=${dim[0]} height=${dim[1]}>
 ${repeat(shifts, shift => shift.id, (shift, index) => svg`
   <g transform=${formatTransform([0, shift.y])}>
     <g class="text" transform=${formatTransform([shift.x, -rowTextHeight])}>
@@ -119,15 +124,16 @@ const data = {
   employees: {},
 };
 
-const dim = [width, height];
+const dim = [totalWidth, height];
 
 render(template(data, dim), document.body);
 const smooth = false;
+let args;
 // const args = {left: width, top: 0, behavior: (smooth ? 'smooth' : 'auto') as ScrollBehavior};
-const args = [width, 0]
 document.addEventListener('DOMContentLoaded', async () => {
-  window.scrollTo(...args as any);
+  args = [xScale(initialDomain[0]), 0]
   await main();
+  window.scrollTo(...args as any);
   window.addEventListener('scroll', () => {
     redraw.next([window.scrollX, window.innerWidth]);
   });
