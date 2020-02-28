@@ -124,6 +124,7 @@ export function generateData(now = new Date(), fuzzy = 30): {shifts: models.Shif
         cumDuration += duration;
   
         components.push({
+          _id: componentId,
           id: componentId,
           showTime: true,
           type: models.ShiftComponentType.Actual,
@@ -140,6 +141,7 @@ export function generateData(now = new Date(), fuzzy = 30): {shifts: models.Shif
   
       if (punches.length != 4) {
         components.unshift({
+          _id: shiftId + '-' + (9).toString(),
           showTime: components.length == 0,
           type: models.ShiftComponentType.Projected,
           start: new Date(punches.length == 3 ? punches[2] : punches.length == 1 ? punches[0] : projectedStart),

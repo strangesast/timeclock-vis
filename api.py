@@ -83,6 +83,7 @@ async def get_shifts(request):
         {'$replaceRoot': {'newRoot': '$root'}},
         {'$addFields': {'duration': {'$map': {'input': '$components', 'as': 'comp', 'in': '$$comp.duration'}}}},
         {'$addFields': {'duration': {'$sum': '$duration'}}},
+        {'$match': {'row': {'$ne': [None]}}},
         ]):
         shifts.append(shift)
     t = time.time() - st

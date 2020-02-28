@@ -39,7 +39,7 @@ export enum ShiftComponentType {
   Projected = 'projected',
 }
 
-interface BaseShiftComponent {
+interface BaseShiftComponent extends MongoObject {
   id?: string;
   x: number;
   w: number;

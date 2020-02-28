@@ -169,8 +169,13 @@ function sortBy(arr) {
 function interpretResponse(content) {
   const {shifts, employees, employeeIds} = content;
   for (const shift of shifts) {
+    shift.id = shift._id;
+    if (isNaN(shift.row)) {
+      shift.row = 18;
+    }
     if (shift['_id'] != null && '$oid' in shift['_id']) {
       shift['_id'] = shift['_id']['$oid'];
+      shift['id'] = shift['_id']
     }
     shift.started = true;
     if (typeof shift.expectedDuration !== "number") {
@@ -188,6 +193,10 @@ function interpretResponse(content) {
     }
     if (Array.isArray(shift.components)) {
       for (const comp of shift.components) {
+        if (comp['_id'] != null && '$oid' in comp['_id']) {
+          comp['_id'] = comp['_id']['$oid'];
+          comp['id'] = comp['_id']
+        }
         comp.showTime = true;
         if (comp.start != null && '$date' in comp.start) {
           comp.start = new Date(comp.start['$date']);

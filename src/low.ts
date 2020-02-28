@@ -8,7 +8,7 @@ import * as d3 from 'd3';
 import { Employee, ShiftComponent, Shift, ShiftComponentType } from './models';
 import { employeeColorScale, formatDuration, formatTime } from './util';
 
-
+declare const GENERATE_MOCKING: boolean;
 const worker = Comlink.wrap(new Worker('./data.worker.ts', { type: 'module' })) as any;
 
 
@@ -25,11 +25,15 @@ const rectHeight = 40;
 
 async function main() {
 
-  now = d3.timeWeek.floor(new Date());
-  now.setDate(now.getDate() + 3);
-  now.setHours(14, 22, 0, 0);
-
-  await worker.initializeData(now);
+  if (GENERATE_MOCKING) {
+    now = d3.timeWeek.floor(new Date());
+    now.setDate(now.getDate() + 3);
+    now.setHours(14, 22, 0, 0);
+  
+    await worker.initializeData(now);
+  } else {
+    now = new Date();
+  }
   await byTime(now);
 }
 
@@ -42,7 +46,7 @@ async function byTime(date: Date) {
   const targetDomainWidth = 2 * 7 * 24 * 60 * 60 * 1000; // two weeks
   const totalWidth = targetDomainWidth * resolution;
 
-  const rowCount = 8;
+  const rowCount = 15;
   const contentHeight = rowCount * rowStep + margin.top;
 
   const d0 = new Date(+date - domainWidth / 2);
@@ -82,6 +86,9 @@ async function byTime(date: Date) {
     shift.y = shift.row * rowStep + margin.top;
     const [a, b] = [shift.start, shift.end || now].map(xScale);
     shift.x = Math.min(Math.max(a, 0), b);
+    if (isNaN(shift.y)) {
+      console.log(shift);
+    }
     return shift;
   }
 
