@@ -1,5 +1,6 @@
 import * as d3 from 'd3';
 import * as models from './models';
+import * as faker from 'faker';
 
 export function generateData(now = new Date(), fuzzy = 30): {shifts: models.Shift[], employees: {[id: string]: models.Employee}} {
   const employees: {[id: string]: models.Employee} = {},
@@ -9,7 +10,7 @@ export function generateData(now = new Date(), fuzzy = 30): {shifts: models.Shif
 
   for (let i = 0; i < EMPLOYEE_COUNT; i++) {
     // start hour
-    const h = Math.floor((6 + (i / EMPLOYEE_COUNT) * 10) * 2) / 2
+    const h = Math.floor((6 + (i / EMPLOYEE_COUNT) * 14) * 2) / 2
     // start hours
     const hh = Math.floor(h);
     // start minutes
@@ -26,22 +27,22 @@ export function generateData(now = new Date(), fuzzy = 30): {shifts: models.Shif
       _id: id,
       id,
       Code: ('0'.repeat(4) + (i + 1)).slice(-4),
-      Name: `FirstName ${i + 1}`,
+      Name: faker.name.firstName(),
       MiddleName: String.fromCharCode((i % 26) + 65),
-      LastName: `LastName`,
+      LastName: faker.name.lastName(),
       HireDate: new Date(),
       shift: { start, end, duration: 2.88e7 },
       color: models.EmployeeShiftColor[models.EMPLOYEE_SHIFT_COLORS[i % models.EMPLOYEE_SHIFT_COLORS.length]],
     };
   }
   
+  const DAY_COUNT = 28;
   const days = [];
-  let date = new Date(now);
-  date.setDate(date.getDate() - date.getDay());
-  for (let i = 0; i < 7; i++) {
+  let date = d3.timeDay.offset(d3.timeWeek.floor(now), -DAY_COUNT + 7);
+  for (let i = 0; i < DAY_COUNT; i++) {
     days.push(date);
     date = new Date(date);
-    date.setDate(date.getDate() + 1);
+    date = d3.timeDay.offset(date, 1);
   }
   
   let lastShiftId = 0;
@@ -49,6 +50,7 @@ export function generateData(now = new Date(), fuzzy = 30): {shifts: models.Shif
     const employee = employees[i];
     for (let j = 1; j < days.length - 1; j++) { 
       const shiftId = (++lastShiftId).toString();
+      const shiftRow = i % 7;
       let cumDuration = 0;
       let started = false;
       const day = days[j];
@@ -154,6 +156,7 @@ export function generateData(now = new Date(), fuzzy = 30): {shifts: models.Shif
         _id: shiftId,
         x: 0,
         y: 0,
+        row: shiftRow,
         id: shiftId,
         employee: employee.id,
         components,

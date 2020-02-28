@@ -7,15 +7,15 @@ declare const GENERATE_MOCKING: boolean;
 
 let obj: models.Sig;
 
-console.log('MOCKING?', GENERATE_MOCKING);
 if (GENERATE_MOCKING) {
   let data = null;
+  const mocking = require('./mocking');
 
   obj = {
     type: 'mocking',
     data,
     async initializeData(date = new Date()) {
-      data = require('./mocking').generateData(date);
+      data = mocking.generateData(date);
     },
     async getShiftsInRange([minDate, maxDate]: models.DateRange): Promise<models.ShiftsResponse> {
       if (data == null) throw new Error('data not initialized');
@@ -33,7 +33,7 @@ if (GENERATE_MOCKING) {
           filteredShifts.push(shift);
         }
       }
-      return { shifts: filteredShifts, employees: filteredEmployees, employeeIds };
+      return { shifts: filteredShifts, employees: filteredEmployees, employeeIds, range: [minDate, maxDate] };
     },
     async getShiftsByEmployeeInRange(employeeId: models.EmployeeID, [minDate, maxDate]: models.DateRange): Promise<models.ShiftsResponse> {
       if (data == null) throw new Error('data not initialized');
@@ -45,7 +45,7 @@ if (GENERATE_MOCKING) {
           filteredShifts.push(shift);
         }
       }
-      return {shifts: filteredShifts, employees: {[employeeId]: employee}, employeeIds: [employeeId]};
+      return {range: [minDate, maxDate], shifts: filteredShifts, employees: {[employeeId]: employee}, employeeIds: [employeeId]};
     },
   };
 } else {

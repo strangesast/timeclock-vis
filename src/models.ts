@@ -66,6 +66,7 @@ export type ShiftComponent = ProjectedShiftComponent|ActualShiftComponent;
 
 export interface Shift extends MongoObject {
   id: string;
+  row: number;
   employee: EmployeeID;
   start: Date; // start of first component (actual or projected)
   startNorm?: Date; // start of first component (actual or projected)
@@ -96,6 +97,7 @@ interface Map<T> {
 }
 
 export interface ShiftsResponse {
+  range: [Date, Date];
   shifts: Shift[];
   employees: Map<Employee>;
   employeeIds: EmployeeID[];

@@ -23,11 +23,21 @@ body > svg text.time {
 body > svg text.time.end {
   text-anchor: end;
 }
+body > svg g.shift {
+  cursor: pointer;
+}
 body > header {
   position: fixed;
   top: 0;
   left: 0;
   width: 100%;
+}
+@keyframes fadein {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+body > svg rect {
+  animation: fadein 0.2s;
 }
   </style>
 </head>
