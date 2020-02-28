@@ -48,6 +48,7 @@ export function generateData(now = new Date(), fuzzy = 30): {shifts: models.Shif
   for (let i = 0; i < EMPLOYEE_COUNT; i++) {
     const employee = employees[i];
     for (let j = 1; j < days.length - 1; j++) { 
+      const shiftId = (++lastShiftId).toString();
       let cumDuration = 0;
       let started = false;
       const day = days[j];
@@ -103,6 +104,7 @@ export function generateData(now = new Date(), fuzzy = 30): {shifts: models.Shif
       const components: models.ShiftComponent[] = [];
       const employeeId = employee.id;
       for (let i = 0; i < 2; i++) {
+        const componentId = shiftId + '-' + i;
         const start = punches[i * 2];
         if (start == null) {
           break;
@@ -120,6 +122,7 @@ export function generateData(now = new Date(), fuzzy = 30): {shifts: models.Shif
         cumDuration += duration;
   
         components.push({
+          id: componentId,
           showTime: true,
           type: models.ShiftComponentType.Actual,
           state,
@@ -147,12 +150,11 @@ export function generateData(now = new Date(), fuzzy = 30): {shifts: models.Shif
         });
       }
   
-      const id = (++lastShiftId).toString();
       shifts.push({
-        _id: id,
+        _id: shiftId,
         x: 0,
         y: 0,
-        id,
+        id: shiftId,
         employee: employee.id,
         components,
         started,

@@ -9,6 +9,7 @@ const package = require('./package.json')
 
 module.exports = {
   entry: {
+    low: './src/low.ts',
     index: './src/index.ts',
     next: './src/next.ts',
     simple: './src/simple.ts',
@@ -18,6 +19,12 @@ module.exports = {
     vendor: Object.keys(package.dependencies),
   },
   plugins: [
+    new HtmlWebpackPlugin({
+      title: 'Low',
+      chunks: ['vendor', 'low'],
+      template: 'src/low.html',
+      filename: 'low.html',
+    }),
     new HtmlWebpackPlugin({
       title: 'Index',
       chunks: ['vendor', 'index'],

@@ -40,6 +40,7 @@ export enum ShiftComponentType {
 }
 
 interface BaseShiftComponent {
+  id?: string;
   x: number;
   w: number;
   fill: d3.Color;
