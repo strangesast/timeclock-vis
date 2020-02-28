@@ -55,7 +55,9 @@ redraw.pipe(
 async function main() {
   await worker.initializeData(now);
   const data = await worker.getShiftsInRange(initialDomain);
-  yScale.domain(data.employeeIds).range(data.employeeIds.map((_, i) => margin.top + i * rowStep));
+  const yRange = data.employeeIds.map((_, i) => margin.top + i * rowStep);
+  dim[1] = yRange[yRange.length - 1] + rowStep;
+  yScale.domain(data.employeeIds).range(yRange);
   data.shifts.forEach(updatePositions);
   render(template(data, dim), document.body);
 }
@@ -99,7 +101,16 @@ const formatTransform = ([x, y]: [number, number]) => {
   }
   return `translate(${x},${y})`;
 }
+const resetHandler = {
+  handleEvent(e) {
+    window.scrollTo({...args, behavior: 'smooth'});
+  },
+  capture: true,
+};
 const template = ({shifts, employees}: {shifts: Shift[], employees: {[id: string]: Employee}}, dim: number[]) => html`
+<header>
+  <button @click=${resetHandler}>Reset</button>
+</header>
 <svg width=${dim[0]} height=${dim[1]}>
 ${repeat(shifts, shift => shift.id, (shift, index) => svg`
   <g transform=${formatTransform([0, shift.y])}>
@@ -128,14 +139,13 @@ const dim = [totalWidth, height];
 
 render(template(data, dim), document.body);
 const smooth = false;
-let args;
-// const args = {left: width, top: 0, behavior: (smooth ? 'smooth' : 'auto') as ScrollBehavior};
+let args = {left: width, top: 0, behavior: (smooth ? 'smooth' : 'auto') as ScrollBehavior};
 document.addEventListener('DOMContentLoaded', async () => {
-  args = [xScale(initialDomain[0]), 0]
+  args.left = xScale(initialDomain[0]);
   await main();
-  window.scrollTo(...args as any);
+  window.scrollTo(args);
   window.addEventListener('scroll', () => {
     redraw.next([window.scrollX, window.innerWidth]);
   });
 });
-window.addEventListener('beforeunload', () => window.scrollTo(...args as any));
+window.addEventListener('beforeunload', () => window.scrollTo(args));
