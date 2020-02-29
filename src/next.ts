@@ -80,8 +80,10 @@ function byTime([minDate, maxDate], now = new Date()) {
   );
   xScale = d3.scaleTime().domain([minDate, maxDate]).range([margin.left, width - margin.right]);
   xScaleCopy = xScale.copy();
-  yScale = d3.scaleOrdinal<number>();
-  yScaleCopy = yScale.copy();
+
+  // yScale = d3.scaleOrdinal<number>();
+  // yScaleCopy = yScale.copy();
+
   topAxis = d3.axisTop(xScale);
   bottomAxis = d3.axisBottom(xScale);
 
@@ -124,7 +126,7 @@ function byTime([minDate, maxDate], now = new Date()) {
 
 
   function draw(shifts: Shift[], employeeIds: EmployeeID[], employees: {[id: string]: Employee}) {
-    yScale.domain(employeeIds).range(Array.from(Array(employeeIds.length)).map((_, i) => i * step));
+    // yScale.domain(employeeIds).range(Array.from(Array(employeeIds.length)).map((_, i) => i * step));
 
     shifts.forEach(updatePositions);
 
@@ -246,7 +248,7 @@ function byTime([minDate, maxDate], now = new Date()) {
       comp.x = xScale(comp.start);
       comp.w = Math.max(xScale(comp.end) - comp.x, 0);
     }
-    shift.y = yScale(shift.employee);
+    shift.y = shift.row * step + rowTextHeight; //  yScale(shift.employee);
     const [a, b] = [shift.start, shift.end || now].map(xScale);
     shift.x = Math.min(Math.max(a, 0), b);
     return shift;
