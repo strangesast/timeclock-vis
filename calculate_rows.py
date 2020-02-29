@@ -6,12 +6,7 @@ from datetime import datetime
 
 from util import get_mongo_db
 
-async def main():
-    config = configparser.ConfigParser()
-    config.read('config.ini')
-    mongo_client = await get_mongo_db(config['MONGO'])
-    mongo_db = mongo_client.timeclock
-
+async def recalculate(mongo_db):
     rows = []
     now = datetime.now()
     pipeline = [
@@ -38,8 +33,13 @@ async def main():
 
         await  mongo_db.shifts.update_one({'_id': shift['_id']}, {'$set': {'row': row}})
 
-    pprint(rows)
-    print(len(rows))
+
+async def main():
+    config = configparser.ConfigParser()
+    config.read('config.ini')
+    mongo_client = await get_mongo_db(config['MONGO'])
+    mongo_db = mongo_client.timeclock
+    await recalculate(mongo_db)
     mongo_client.close()
 
 

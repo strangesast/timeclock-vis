@@ -16,6 +16,7 @@ from pymongo import ReplaceOne
 from bson.codec_options import CodecOptions, TypeRegistry
 
 from util import get_async_rpc_connection, get_mysql_db, get_mongo_db, EmployeeShiftColor
+from calculate_rows import recalculate
 
 
 async def init(mongo_db, mysql_db, proxy):
@@ -108,6 +109,8 @@ async def main(config):
 
     logging.info('running first update')
     await update(mongo_db, amg_rpc_proxy)
+
+    await recalculate(mongo_db)
 
     interval = timedelta(hours=1)
     buf = 10 # added to interval, or used as timeout between retries
