@@ -27,8 +27,9 @@ async def init(mongo_db, mysql_db, proxy):
 
     await mysql_cursor.execute('select id,Code,Name,MiddleName,LastName,HireDate from tam.inf_employee')
     async for employee in mysql_cursor:
-        #color = models.EmployeeShiftColor(i % len(models.EmployeeShiftColor))
-        employee_id = str(employee['id'])
+        employee_id = employee['id']
+        color = models.EmployeeShiftColor(employee_id % len(models.EmployeeShiftColor))
+        employee_id = str(employee_id)
         employee['id'] = employee_id
         employee['Color'] = EmployeeShiftColor.RED
         ops.append(ReplaceOne({'id': employee_id}, employee, upsert=True))

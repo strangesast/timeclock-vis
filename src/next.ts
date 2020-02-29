@@ -349,7 +349,7 @@ function byEmployee(employee: Employee, centerDate: Date) {
   const domain = d3.timeDay.range(minDate, maxDate).map(d => d.toISOString().slice(0, 10));
   const j = domain.indexOf(centerDate.toISOString().slice(0, 10));
   yScale = d3.scaleTime();
-  yScale.domain([minDate, maxDate]).range([0, step * 8]);
+  yScale.domain([minDate, maxDate]).range([margin.top, height - margin.bottom]);
   yScaleCopy = yScale.copy();
 
   xScale = d3.scaleTime().range([margin.left, width - margin.right]);
@@ -364,6 +364,7 @@ function byEmployee(employee: Employee, centerDate: Date) {
     worker.getShiftsByEmployeeInRange.bind(worker)
   ).subscribe(result => {
     const [{shifts, employees, employeeIds}, args] = result as any;
+    lastDomain = args[1];
     const employee = employees[employeeIds[0]]; // uh
     draw(shifts, employee);
   });
@@ -412,6 +413,7 @@ function byEmployee(employee: Employee, centerDate: Date) {
     bottomAxis.scale(xScale);
 
     const [a, b] = lastDomain.map(d => yScale(d));
+
     svg.select('#clip').select('rect.fg')
       .attr('transform', `translate(0,${a})`)
       .attr('height', b - a)
@@ -543,7 +545,6 @@ function byEmployee(employee: Employee, centerDate: Date) {
       .attr('height', b - a)
       .attr('width', '100%');
  
- 
     svg.select('g.shifts')
       .selectAll<SVGElement, Shift>('g.shift')
       .each(updatePositions)
@@ -559,6 +560,7 @@ function byEmployee(employee: Employee, centerDate: Date) {
         .call(s => s.select('text.time.end').attr('x', d => d.w - 4))
         .each(filterShiftComponentTimeVisibility)
       );
+    updated.next(yScale.domain());
   }
 
   function resized() {
