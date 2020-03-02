@@ -1,0 +1,5 @@
+/dist
+/node_modules
+chrome-profiler-events*.json
+speed-measure-plugin*.json
+npm-debug.log
