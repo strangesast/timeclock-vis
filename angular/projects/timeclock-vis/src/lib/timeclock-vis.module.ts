@@ -1,7 +1,8 @@
 import { NgModule, ModuleWithProviders } from '@angular/core';
 import { TimeclockVisComponent } from './timeclock-vis.component';
 import { HttpDataProviderService } from './http-data-provider.service';
-import { DataProviderService } from './data-provider';
+import { MockingDataProviderService } from './mocking-data-provider.service';
+import { DataProviderService } from './models/data-provider';
 
 
 @NgModule({
@@ -14,7 +15,8 @@ export class TimeclockVisModule {
     return {
       ngModule: TimeclockVisModule,
       providers: [
-        { provide: DataProviderService, useClass: HttpDataProviderService }
+        // { provide: DataProviderService, useClass: HttpDataProviderService }
+        { provide: DataProviderService, useClass: MockingDataProviderService }
       ]
     };
   }

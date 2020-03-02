@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { DataProviderService } from './data-provider';
+import { DataProviderService } from './models/data-provider';
 
 @Injectable({
   providedIn: 'root'

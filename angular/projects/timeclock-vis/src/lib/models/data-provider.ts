@@ -5,7 +5,7 @@ import { Shift } from './shift';
 type DateRange = [Date, Date];
 
 export interface DataResponse {
-  range: [Date, Date];
+  range: DateRange;
   shifts: Shift[];
   employees: {[key: string]: Employee};
   employeeIds: EmployeeID[];

@@ -13,7 +13,7 @@ import { TimeclockVisModule } from 'timeclock-vis';
   imports: [
     BrowserModule,
     AppRoutingModule,
-    TimeclockVisModule,
+    TimeclockVisModule.forRoot(),
   ],
   providers: [],
   bootstrap: [AppComponent]

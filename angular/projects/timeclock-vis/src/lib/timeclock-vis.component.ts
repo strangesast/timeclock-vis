@@ -2,6 +2,7 @@ import { Component, OnDestroy, AfterViewInit, HostListener, ViewChild } from '@a
 import { ScrollDispatcher } from '@angular/cdk/scrolling';
 import { Subject, BehaviorSubject } from 'rxjs';
 import { map, takeUntil, tap, throttleTime } from 'rxjs/operators';
+import { TimeclockVisService } from './timeclock-vis.service';
 import * as d3 from 'd3';
 
 @Component({
@@ -25,7 +26,14 @@ export class TimeclockVisComponent implements AfterViewInit, OnDestroy {
   //   console.log($event);
   // }
 
-  constructor(private scroller: ScrollDispatcher) {
+  constructor(private scroller: ScrollDispatcher, public service: TimeclockVisService) {
+    const now = new Date();
+
+    const d0 = d3.timeDay.offset(d3.timeDay.floor(now), -1);
+    const d1 = d3.timeDay.offset(d0, 1);
+
+    service.getShiftsInRange([d0, d1]).then(data => console.log(data));
+
     scroller.scrolled().pipe(
       tap($event => console.log($event)),
       // throttleTime(100),
