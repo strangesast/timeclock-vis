@@ -162,6 +162,7 @@ export function generateData(now = new Date(), fuzzy = 30): {shifts: models.Shif
         id: shiftId,
         employee: employee.id,
         employeeColor: employee.color,
+        state: models.ShiftState.Complete,
         components,
         started,
         punches: punches.map(date => ({date})),

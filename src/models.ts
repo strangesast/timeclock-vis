@@ -78,6 +78,7 @@ export interface Shift extends MongoObject {
   punches: {
     date: Date
   }[],
+  state: ShiftState;
   started: boolean;
   y: number;
   x: number;
