@@ -15,6 +15,7 @@ from pymongo.errors import BulkWriteError
 from pymongo import ReplaceOne
 from bson.codec_options import CodecOptions, TypeRegistry
 
+import models
 from util import get_async_rpc_connection, get_mysql_db, get_mongo_db, EmployeeShiftColor
 from calculate_rows import recalculate
 
@@ -31,7 +32,7 @@ async def init(mongo_db, mysql_db, proxy):
         color = models.EmployeeShiftColor(employee_id % len(models.EmployeeShiftColor))
         employee_id = str(employee_id)
         employee['id'] = employee_id
-        employee['Color'] = EmployeeShiftColor.RED
+        employee['Color'] = color
         ops.append(ReplaceOne({'id': employee_id}, employee, upsert=True))
 
     await mongo_db.employees.create_index('id', unique=True)
@@ -111,12 +112,11 @@ async def main(config):
     logging.info('running first update')
     await update(mongo_db, amg_rpc_proxy)
 
-    await recalculate(mongo_db)
-
     interval = timedelta(hours=1)
     buf = 10 # added to interval, or used as timeout between retries
 
     try:
+        # this is horribly broken.  runs fine on first, fails thereafter
         while True:
             now = datetime.now()
             latest_poll = await get_poll(mongo_db, mysql_client)
@@ -234,7 +234,6 @@ async def update(mongo_db, proxy):
     next_state = {}
     current_state = await mongo_db.state.find_one({}, sort=[('date', pymongo.DESCENDING)])
 
-
     value_ids = set()
     async for value in mongo_db.shifts.aggregate([
         {'$match': {'state': 'incomplete'}},
@@ -259,6 +258,8 @@ async def update(mongo_db, proxy):
             values.append(value)
 
     await mongo_db.state.insert_one({'date': now, 'values': values})
+
+    await recalculate(mongo_db, min_date)
 
 
 async def update_shifts(proxy, employee_ids, min_date, end_date = datetime.now(), interval = timedelta(days=14)):

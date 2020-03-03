@@ -68,6 +68,7 @@ export interface Shift extends MongoObject {
   id: string;
   row: number;
   employee: EmployeeID;
+  employeeColor: EmployeeShiftColor;
   start: Date; // start of first component (actual or projected)
   startNorm?: Date; // start of first component (actual or projected)
   end: Date; // end of last component (actual or projected)

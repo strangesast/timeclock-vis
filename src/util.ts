@@ -1,4 +1,5 @@
 import * as d3 from 'd3';
+const LOCALE = 'en';
 
 export const employeeColorScale = (function() {
   const scale = d3.scaleOrdinal();
@@ -59,6 +60,13 @@ export function formatDate (date: Date) {
   const mm = ('0' + date.getMinutes()).slice(-2);
   const yyyy = date.getFullYear();
   return `${m}/${d}/${yyyy} ${hh}:${mm}`;
+}
+
+export function formatDateWeekday(date: Date) {
+  const a = date.toLocaleDateString(LOCALE, { weekday: 'long' });
+  const m = date.getMonth() + 1;
+  const d = date.getDate();
+  return `${a} ${m}/${d}`;
 }
 
 export function formatTime (d, ms = false) {

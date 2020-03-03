@@ -1,12 +1,11 @@
 import * as d3 from 'd3';
 import { Observable, BehaviorSubject, timer } from 'rxjs';
 import { switchMap, filter, map, scan, startWith, audit, auditTime, throttleTime } from 'rxjs/operators';
-import { formatDuration, formatTime, inFieldOfView, throttle, employeeColorScale, debounce } from './util';
+import { formatDuration, formatDateWeekday, formatTime, inFieldOfView, throttle, employeeColorScale, debounce } from './util';
 import { ShiftState, Shift, Employee, ShiftComponent, ShiftComponentType, EmployeeID, TranslateExtent } from './models';
 import * as Comlink from 'comlink';
 
 declare const GENERATE_MOCKING: boolean;
-const LOCALE = 'en';
 const defaultExtent: [[number, number], [number, number]] = [[-Infinity,-Infinity], [Infinity, Infinity]];
 
 let width,
@@ -442,7 +441,7 @@ function byEmployee(employee: Employee, centerDate: Date) {
         .call(s => s.select('g.text')
           .each(function (d) {
             const s = d3.select(this);
-            const text = s.select<SVGGraphicsElement>('text').text(formatDate(d.start));
+            const text = s.select<SVGGraphicsElement>('text').text(formatDateWeekday(d.start));
             const dx = text.node().getBBox().width + 4;
             s.select('g.duration').attr('transform', `translate(${dx},0)`);
           })
@@ -465,7 +464,7 @@ function byEmployee(employee: Employee, centerDate: Date) {
           .call(s => s.select('g.text')
             .each(function (d) {
               const s = d3.select(this);
-              const text = s.select<SVGGraphicsElement>('text').text(formatDate(d.start));
+              const text = s.select<SVGGraphicsElement>('text').text(formatDateWeekday(d.start));
               const dx = text.node().getBBox().width + 4;
               s.select('g.duration').attr('transform', `translate(${dx},0)`);
             })
@@ -589,7 +588,7 @@ function byEmployee(employee: Employee, centerDate: Date) {
         .call(s => s.select('g.text')
           .each(function (d) {
             const s = d3.select(this);
-            const text = s.select<SVGGraphicsElement>('text').text(formatDate(d.start));
+            const text = s.select<SVGGraphicsElement>('text').text(formatDateWeekday(d.start));
             const dx = text.node().getBBox().width + 4;
             s.select('g.duration').attr('transform', `translate(${dx},0)`);
           })
@@ -750,7 +749,7 @@ function drawAxis() {
 
   svg.select('g.axis.date').selectAll<SVGElement, DateLabel>('g').data(labels, d => d.id)
     .join(
-      enter => enter.append('g').call(s => s.append('text').classed('date-label', true).text(d => formatDate(d.date))),
+      enter => enter.append('g').call(s => s.append('text').classed('date-label', true).text(d => formatDateWeekday(d.date))),
       update => update,
       exit => exit.remove(),
     )
@@ -814,9 +813,3 @@ function formatDateSimple(date: Date): string {
   return `${m}/${d}`;
 }
 
-function formatDate(date: Date) {
-  const a = date.toLocaleDateString(LOCALE, { weekday: 'long' });
-  const m = date.getMonth() + 1;
-  const d = date.getDate();
-  return `${a} ${m}/${d}`;
-}

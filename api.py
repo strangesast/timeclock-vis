@@ -67,7 +67,6 @@ async def get_shifts(request):
         employees = await db.employees.find({}).to_list(100)
         employees = {id: employee for employee in employees if (id := employee.get('id'))}
 
-    print(f'{query=}')
     # ayy join
     st = time.time()
     shifts = []
@@ -87,7 +86,6 @@ async def get_shifts(request):
         ]):
         shifts.append(shift)
     t = time.time() - st
-    #print(f'aggregation took {t}s')
 
     return web.Response(text=dumps({
         'employees': employees,

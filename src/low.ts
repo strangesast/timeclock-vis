@@ -5,8 +5,8 @@ import { switchMap, map, throttleTime } from 'rxjs/operators';
 import * as Comlink from 'comlink';
 import * as d3 from 'd3';
 
-import { Employee, ShiftComponent, Shift, ShiftComponentType } from './models';
-import { employeeColorScale, formatDuration, formatTime } from './util';
+import { Employee, ShiftComponent, Shift, ShiftComponentType, EmployeeShiftColor } from './models';
+import { employeeColorScale, formatDuration, formatTime, formatDateWeekday } from './util';
 
 declare const GENERATE_MOCKING: boolean;
 const worker = Comlink.wrap(new Worker('./data.worker.ts', { type: 'module' })) as any;
@@ -78,7 +78,7 @@ async function byTime(date: Date) {
   const updatePositions = (shift: Shift) => {
     for (const comp of shift.components) {
       const index = comp.type == ShiftComponentType.Projected ? 1 : 0;
-      comp.fill = d3.color(employeeColorScale(shift.employee)[index]);
+      comp.fill = d3.color(employeeColorScale(shift.employeeColor.toString())[index]);
       comp.x = xScale(comp.start);
       comp.w = Math.max(xScale(comp.end) - comp.x, 0);
     }
@@ -200,7 +200,7 @@ function byEmployee(employeeId: string, date = new Date()) {
     calculateNorms(shift);
     for (const comp of shift.components) {
       const index = comp.type == ShiftComponentType.Projected ? 1 : 0;
-      comp.fill = d3.color(employeeColorScale(shift.employee)[index]);
+      comp.fill = d3.color(employeeColorScale(shift.employeeColor.toString())[index]);
       comp.x = xScale(comp.startNorm);
       comp.w = Math.max(xScale(comp.endNorm) - comp.x, 0);
     }
@@ -211,7 +211,7 @@ function byEmployee(employeeId: string, date = new Date()) {
 
   const resetClickHandler = {
     handleEvent(e) {
-      window.scrollTo({...args, top: yScale(now) - height / 2, behavior: 'smooth'});
+      window.scrollTo({...args, top: yScale(d3.timeWeek.floor(now)), behavior: 'smooth'});
     },
     capture: true,
   };
@@ -235,7 +235,7 @@ function byEmployee(employeeId: string, date = new Date()) {
     <g @click=${shiftClickHandlerFn(shift)} class="shift" transform=${formatTransform([0, shift.y])}>
       <g class="text" transform=${formatTransform([shift.x, -rowTextHeight])}>
         ${shift.started ? drawPieAndTime(shift) : ''}
-        <text class="name" x=${shift.started ? 80 : 0} y=${5}>${formatName(employees[shift.employee])}</text>
+        <text class="name" x=${shift.started ? 80 : 0} y=${5}>${formatDateWeekday(shift.start)}</text>
       </g>
       ${repeat(shift.components, c => c.id, (component, index) => svg`
         <g transform=${formatTransform([component.x, 0])}>
@@ -295,7 +295,7 @@ function calculateNorms(shift: Shift) {
 
 
 const drawPieAndTime = (shift: Shift) => svg`
-  ${drawMiniPie(shift.duration / shift.expectedDuration, shift.employee)}
+  ${drawMiniPie(shift.duration / shift.expectedDuration, shift.employeeColor)}
   <text class="time" y="5" x="24" >${formatDuration(shift.duration)}</text>
 `;
 
@@ -305,8 +305,8 @@ const filterShiftComponentTimeVisibility = (d: ShiftComponent) => svg`
 `;
 
 const arc = d3.arc();
-function drawMiniPie(frac: number, employeeId: string, radius = 10) {
-  const c = employeeColorScale(employeeId);
+function drawMiniPie(frac: number, employeeColor: EmployeeShiftColor, radius = 10) {
+  const c = employeeColorScale(employeeColor.toString());
   const endAngle = 2 * Math.PI * Math.min(Math.max(frac, 0), 1);
   const startAngle = 0;
   return svg`

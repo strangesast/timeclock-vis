@@ -168,6 +168,25 @@ function sortBy(arr) {
 
 function interpretResponse(content) {
   const {shifts, employees, employeeIds} = content;
+  const employeeColors = {};
+  for (const empl of Object.values(employees) as any[]) {
+    if (empl['_id'] != null && '$oid' in empl['_id']) {
+      empl['_id'] = empl['_id']['$oid'];
+    }
+    employeeColors[empl['id']] = empl['Color']
+    if (empl.HireDate != null && '$date' in empl.HireDate) {
+      empl.HireDate = new Date(empl.HireDate['$date']);
+    } else if (typeof empl.HireDate === 'string') {
+      empl.HireDate = new Date(empl.HireDate);
+    }
+    if (empl.stats) {
+      for (const [key, value] of Object.entries(empl.stats)) {
+        if (value != null && value['$date']) {
+          empl.stats[key] = new Date(value['$date']);
+        }
+      }
+    }
+  }
   for (const shift of shifts) {
     shift.id = shift._id;
     if (isNaN(shift.row)) {
@@ -177,6 +196,7 @@ function interpretResponse(content) {
       shift['_id'] = shift['_id']['$oid'];
       shift['id'] = shift['_id']
     }
+    shift['employeeColor'] = employeeColors[shift['employee']];
     shift.started = true;
     if (typeof shift.expectedDuration !== "number") {
       shift.expectedDuration = 2.88e7;
@@ -209,23 +229,6 @@ function interpretResponse(content) {
           comp.end = new Date(comp.end);
         } else if (comp.end == null) {
           comp.end = new Date();
-        }
-      }
-    }
-  }
-  for (const empl of Object.values(employees) as any[]) {
-    if (empl['_id'] != null && '$oid' in empl['_id']) {
-      empl['_id'] = empl['_id']['$oid'];
-    }
-    if (empl.HireDate != null && '$date' in empl.HireDate) {
-      empl.HireDate = new Date(empl.HireDate['$date']);
-    } else if (typeof empl.HireDate === 'string') {
-      empl.HireDate = new Date(empl.HireDate);
-    }
-    if (empl.stats) {
-      for (const [key, value] of Object.entries(empl.stats)) {
-        if (value != null && value['$date']) {
-          empl.stats[key] = new Date(value['$date']);
         }
       }
     }
