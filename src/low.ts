@@ -43,7 +43,7 @@ async function byTime(date: Date) {
 
   const resolution = 30 / 3600000; // 30 pixels per hour
   const domainWidth = width / resolution;
-  const targetDomainWidth = 2 * 7 * 24 * 60 * 60 * 1000; // two weeks
+  const targetDomainWidth = 20 * 7 * 24 * 60 * 60 * 1000; // two weeks
   const totalWidth = targetDomainWidth * resolution;
 
   const rowCount = 15;
@@ -56,13 +56,6 @@ async function byTime(date: Date) {
   const x0 = totalWidth / 2 - width / 2;
   const x1 = x0 + width;
   const xScale = d3.scaleTime().range([x0, x1]).domain(initialDomain);
-
-  /*
-  const yScale = d3.scaleOrdinal<string, number>();
-  const yRange = data.employeeIds.map((_, i) => margin.top + i * rowStep);
-  const yRows = Array.from(Array(10)).map((_, i) => i.toString());
-  yScale.domain(yRows).range(yRange);
-  */
 
   const redraw = new Subject();
   redraw.pipe(
@@ -123,6 +116,7 @@ async function byTime(date: Date) {
         <g transform=${formatTransform([component.x, 0])}>
           <rect rx=8 ry=8 width=${component.w} height=${rectHeight} fill=${component.fill.toString()}></rect>
           ${filterShiftComponentTimeVisibility(component)}
+          <title>${formatTime(component.start)}-${formatTime(component.end)}</title>
         </g>
       `)}
     </g>
@@ -150,6 +144,14 @@ async function byTime(date: Date) {
 function byEmployee(employeeId: string, date = new Date()) {
   const {innerWidth: width, innerHeight: height} = window;
 
+  const domainHeight = height / rowStep * 8.64e7;
+  const d0 = new Date(+date - domainHeight / 2);
+  const d1 = new Date(+date + domainHeight / 2);
+
+  domainHeight / height
+
+  const totalHeight = rowStep * 20 * 7;
+
   // const resolution = 30 / 3600000; // 30 pixels per hour
   // const domainWidth = width / resolution;
   // const targetDomainWidth = 2 * 7 * 24 * 60 * 60 * 1000; // two weeks
@@ -162,10 +164,10 @@ function byEmployee(employeeId: string, date = new Date()) {
   // const d1 = new Date(+now + domainWidth / 2);
   // const initialDomain = [d0, d1];
 
-  let minDate = d3.timeWeek.floor(date);
-  let maxDate = d3.timeDay.offset(minDate, 7);
+  // let minDate = d3.timeWeek.floor(date);
+  // let maxDate = d3.timeDay.offset(minDate, 7);
 
-  const yScale = d3.scaleTime().domain([minDate, maxDate]).range([height + margin.top, height + margin.top + rowStep * 8]);
+  const yScale = d3.scaleTime().domain([d0, d1]).range([totalHeight / 2 - height / 2, totalHeight / 2 + height / 2]);
   const xScale = d3.scaleTime().range([margin.left, width - margin.right]);
 
   const redraw = new Subject();
@@ -241,6 +243,7 @@ function byEmployee(employeeId: string, date = new Date()) {
         <g transform=${formatTransform([component.x, 0])}>
           <rect rx=8 ry=8 width=${component.w} height=${rectHeight} fill=${component.fill.toString()}></rect>
           ${filterShiftComponentTimeVisibility(component)}
+          <title>${formatTime(component.start)}-${formatTime(component.end)}</title>
         </g>
       `)}
     </g>
@@ -253,8 +256,8 @@ function byEmployee(employeeId: string, date = new Date()) {
   window.addEventListener('scroll', onScroll);
   window.addEventListener('beforeunload', onBeforeUnload);
 
-  let args = {left: 0, top: height, behavior: 'auto' as ScrollBehavior};
-  const dim = [width, height * 3];
+  let args = {left: 0, top: yScale(d3.timeWeek.floor(date)), behavior: 'auto' as ScrollBehavior};
+  const dim = [width, totalHeight];
   render(template({shifts: [], employees: {}}, dim), document.body);
   window.scrollTo(args);
 
@@ -299,9 +302,11 @@ const drawPieAndTime = (shift: Shift) => svg`
   <text class="time" y="5" x="24" >${formatDuration(shift.duration)}</text>
 `;
 
+const START_MIN_WIDTH_THRESHOLD = 50;
+const END_MIN_WIDTH_THRESHOLD = 100;
 const filterShiftComponentTimeVisibility = (d: ShiftComponent) => svg`
-  <text class="time start" opacity=${d.showTime && d.w > 120 ? 1 : 0} y=${rectHeight/2} x=4>${formatTime(d.start)}</text>
-  <text class="time end" opacity=${d.showTime && d.w > 200 ? 1 : 0} y=${rectHeight/2} x=${d.w - 4}>${formatTime(d.end)}</text>
+  <text class="time start" opacity=${d.showTime && d.w > START_MIN_WIDTH_THRESHOLD ? 1 : 0} y=${rectHeight/2} x=4>${formatTime(d.start)}</text>
+  <text class="time end" opacity=${d.showTime && d.w > END_MIN_WIDTH_THRESHOLD ? 1 : 0} y=${rectHeight/2} x=${d.w - 4}>${formatTime(d.end)}</text>
 `;
 
 const arc = d3.arc();
