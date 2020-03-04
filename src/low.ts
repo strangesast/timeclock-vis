@@ -1,7 +1,7 @@
-import { Subject } from 'rxjs';
-import { switchMap, map, throttleTime } from 'rxjs/operators';
-import * as Comlink from 'comlink';
 import * as d3 from 'd3';
+import { Subject } from 'rxjs';
+import * as Comlink from 'comlink';
+import { switchMap, map, throttleTime } from 'rxjs/operators';
 
 import { Employee, ShiftComponent, Shift, ShiftComponentType, EmployeeShiftColor, ShiftState } from './models';
 import { employeeColorScale, formatDuration, formatTime, formatDateWeekday } from './util';

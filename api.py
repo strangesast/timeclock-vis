@@ -11,6 +11,7 @@ from bson.json_util import dumps
 from aiojobs.aiohttp import setup, spawn
 
 from util import get_mongo_db
+from graph import get_graph_data
 
 EMPLOYEE_IDS = ['50', '53', '71', '61', '82', '73', '55', '72', '66', '62', '69',
         '67', '80', '79', '57', '51', '70', '74', '54', '56', '58', '59', '64', '65']
@@ -27,6 +28,13 @@ async def coro():
 async def recheck(request):
     await spawn(request, coro())
     return web.Response(text='checking')
+
+
+@routes.get('/data/graph')
+async def recheck(request):
+    db = request.app['db'].timeclock;
+    res = await get_graph_data(db)
+    return web.Response(text=dumps(res))
 
 
 @routes.get('/data/shifts')
