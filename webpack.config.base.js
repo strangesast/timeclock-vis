@@ -11,6 +11,7 @@ module.exports = {
   entry: {
     low: './src/low.ts',
     index: './src/index.ts',
+    graph: './src/graph.ts',
     next: './src/next.ts',
     simple: './src/simple.ts',
     concept: './src/concept.ts',
@@ -30,6 +31,12 @@ module.exports = {
       chunks: ['vendor', 'index'],
       template: 'src/index.html',
       filename: 'index.html',
+    }),
+    new HtmlWebpackPlugin({
+      title: 'Graph',
+      chunks: ['vendor', 'graph'],
+      template: 'src/graph.html',
+      filename: 'graph.html',
     }),
     new HtmlWebpackPlugin({
       title: 'Next',
