@@ -1,5 +1,3 @@
-import { svg as litSvg, html, render } from 'lit-html';
-import { repeat } from 'lit-html/directives/repeat';
 import { Subject } from 'rxjs';
 import { switchMap, map, throttleTime } from 'rxjs/operators';
 import * as Comlink from 'comlink';
@@ -11,14 +9,9 @@ import { employeeColorScale, formatDuration, formatTime, formatDateWeekday } fro
 declare const GENERATE_MOCKING: boolean;
 const worker = Comlink.wrap(new Worker('./data.worker.ts', { type: 'module' })) as any;
 
-
 let now: Date;
-
-const margin = {top: 80, left: 10, right: 10, bottom: 10};
 const START_MIN_WIDTH_THRESHOLD = 50;
 const END_MIN_WIDTH_THRESHOLD = 100;
-
-// const inView = [xScale.invert(width), xScale.invert(width + width)];
 
 const rowStep = 70;
 const rowTextHeight = 12;
@@ -39,57 +32,8 @@ async function main() {
   await byTime(now);
 }
 
-function drawTopAxis(sel, scale, h) {
-  if (sel.select('g.axis.top').empty()) {
-    sel.append('g').classed('axis top', true);
-  }
-  return sel.select('g.axis.top')
-    .attr('transform', `translate(0,${margin.top})`)
-    .call(d3.axisTop(scale).ticks(d3.timeHour.every(3)))
-    .call(s => s.select('path').remove())
-    .call(s => s.selectAll('.tick').select('line')
-      .attr('y2', h)
-    );
-}
-
-function drawBottomAxis(sel, scale, h) {
-  if (sel.select('g.axis.bottom').empty()) {
-    sel.append('g').classed('axis bottom', true);
-  }
-
-  return sel.select('g.axis.bottom')
-    .attr('transform', `translate(0,${h})`)
-    .call(d3.axisBottom(scale).ticks(d3.timeHour.every(3)))
-    .call(s => s.select('path').remove())
-    .call(s => s.selectAll('.tick').select('line').remove());
-}
-
-
-function drawDateAxis(sel, scale) {
-  if (sel.select('g.axis.date').empty()) {
-    sel.append('g').classed('axis date', true);
-  }
-  const days = [];
-  const [minDate, maxDate] = scale.domain();
-  let d = d3.timeDay.floor(minDate)
-  while (d < maxDate) {
-    days.push(d3.timeHour.offset(d, 12));
-    d = d3.timeDay.offset(d, 1)
-  }
-  sel.select('g.axis.date').attr('transform', `translate(0,${48})`).selectAll('g.label').data(days, d => d.toISOString().slice(0, 10)).join(
-    enter => enter.append('g').classed('label', true)
-      .attr('transform', d => `translate(${scale(d)},0)`)
-      .call(s => s.append('text')
-        .attr('text-anchor', 'middle')
-        .attr('alignment-baseline', 'middle')
-        .text(d => formatDateWeekday(d))
-      ),
-    update => update.attr('transform', d => `translate(${scale(d)},0)`),
-    exit => exit.remove(),
-  );
-}
-
 async function byTime(date: Date) {
+  const margin = {top: 80, left: 10, right: 10, bottom: 10};
   const {innerWidth: width, innerHeight: height} = window;
 
   const axisLabelHeight = 30;
@@ -122,6 +66,18 @@ async function byTime(date: Date) {
   drawBottomAxis(svg, xScale, contentHeight - axisLabelHeight - margin.bottom);
   drawDateAxis(svg, xScale);
 
+  if (body.select('header').empty()) {
+    body.append('header').append('button')
+      .call(s => s.text('Reset'))
+  }
+  body.select('header').select('button')
+    .on('click', d => {
+      window.scrollTo({...args, left: xScale(now) - width / 2, behavior: 'smooth'});
+    })
+
+  if (body.select('svg').select('g.shifts').empty()) {
+    body.select('svg').append('g').classed('shifts', true);
+  }
   svg.attr('width', totalWidth).attr('height', height);
 
   const redraw = new Subject();
@@ -151,46 +107,9 @@ async function byTime(date: Date) {
     return shift;
   }
 
-  function filterShiftComponentTimeVisibility (d: ShiftComponent) {
-    return d3.select(this)
-      .call(s => s.append('text').classed('time start', true)
-        .attr('y', rectHeight / 2)
-        .attr('x', 4)
-        .attr('opacity', d.showTime && d.w > START_MIN_WIDTH_THRESHOLD ? 1 : 0)
-        .text(formatTime(d.start)))
-      .call(s => s.append('text').classed('time end', true)
-        .attr('y', rectHeight / 2)
-        .attr('x', d.w - 4)
-        .attr('opacity', d.showTime && d.w > END_MIN_WIDTH_THRESHOLD ? 1 : 0)
-        .text(formatTime(d.end)))
-  }
-
-  const arc = d3.arc();
-  function drawMiniPie(s, frac: number, employeeColor: EmployeeShiftColor, radius = 10) {
-    const endAngle = 2 * Math.PI * Math.min(Math.max(frac, 0), 1);
-    const startAngle = 0;
-    if (s.select('g.pie').empty()) {
-      const c = employeeColorScale(employeeColor.toString());
-      s = s.append('g').classed('pie', true).attr('transform', `translate(${radius},0)`)
-        .call(s => s.append('circle').attr('r', 10).attr('fill', c[1]))
-        .call(s => s.append('path').attr('fill', c[0]));
-    }
-    return s.call(s => s.select('path').attr('d', arc({ startAngle, endAngle, outerRadius: radius, innerRadius: 0 })))
-  }
-
   function draw({shifts, employees}:{shifts: Shift[], employees: {[id: string]: Employee}}, [w, h]: [number, number]) {
-    if (body.select('header').empty()) {
-      body.append('header').append('button')
-        .call(s => s.text('Reset'))
-        .on('click', d => {
-          window.scrollTo({...args, left: xScale(now) - width / 2, behavior: 'smooth'});
-        })
-    }
-    if (body.select('svg').select('g.shifts').empty()) {
-      body.select('svg').append('g').classed('shifts', true);
-    }
-    body.select('svg').attr('width', w).attr('height', h).select('g.shifts').selectAll('g.shift').data(shifts, d => d['_id']).join(
-      enter => enter.append('g').classed('shift', true).attr('transform', d => `translate(0,${d.y})`)
+    body.select('svg').attr('width', w).attr('height', h).select('g.shifts').raise().selectAll('g.shift').data(shifts, d => d['_id']).join(
+      enter => enter.append('g').classed('shift time', true).attr('transform', d => `translate(0,${d.y})`)
         .call(s => s.append('g').classed('text', true).attr('transform', d => `translate(${d.x},${-rowTextHeight})`)
           .call(s => s.append('text').classed('name', true).text(d => formatName(employees[d.employee])))
           .each(function (d) {
@@ -239,42 +158,101 @@ async function byTime(date: Date) {
   window.scrollTo(args);
 
   const cleanup = () => {
+    svg.select('g.axis.top').remove()
+    svg.select('g.axis.bottom').remove()
+    svg.select('g.axis.date').remove()
     window.removeEventListener('scroll', onScroll);
     window.removeEventListener('beforeunload', onBeforeUnload);
   };
+
+  function drawTopAxis(sel, scale, h) {
+    if (sel.select('g.axis.top').empty()) {
+      sel.append('g').classed('axis top', true);
+    }
+    return sel.select('g.axis.top')
+      .attr('transform', `translate(0,${margin.top})`)
+      .call(d3.axisTop(scale).ticks(d3.timeHour.every(3)))
+      .call(s => s.select('path').remove())
+      .call(s => s.selectAll('.tick').select('line')
+        .attr('y2', h)
+      );
+  }
+  
+  function drawBottomAxis(sel, scale, h) {
+    if (sel.select('g.axis.bottom').empty()) {
+      sel.append('g').classed('axis bottom', true);
+    }
+  
+    return sel.select('g.axis.bottom')
+      .attr('transform', `translate(0,${h})`)
+      .call(d3.axisBottom(scale).ticks(d3.timeHour.every(3)))
+      .call(s => s.select('path').remove())
+      .call(s => s.selectAll('.tick').select('line').remove());
+  }
+  
+  
+  function drawDateAxis(sel, scale) {
+    if (sel.select('g.axis.date').empty()) {
+      sel.append('g').classed('axis date', true);
+    }
+    const days = [];
+    const [minDate, maxDate] = scale.domain();
+    let d = d3.timeDay.floor(minDate)
+    while (d < maxDate) {
+      days.push(d3.timeHour.offset(d, 12));
+      d = d3.timeDay.offset(d, 1)
+    }
+    sel.select('g.axis.date').attr('transform', `translate(0,${48})`).selectAll('g.label').data(days, d => d.toISOString().slice(0, 10)).join(
+      enter => enter.append('g').classed('label', true)
+        .attr('transform', d => `translate(${scale(d)},0)`)
+        .call(s => s.append('text')
+          .attr('text-anchor', 'middle')
+          .attr('alignment-baseline', 'middle')
+          .text(d => formatDateWeekday(d))
+        ),
+      update => update.attr('transform', d => `translate(${scale(d)},0)`),
+      exit => exit.remove(),
+    );
+  }
 }
 
 function byEmployee(employeeId: string, date = new Date()) {
+  const margin = {top: 80, left: 80, right: 10, bottom: 10};
   const {innerWidth: width, innerHeight: height} = window;
 
   const domainHeight = height / rowStep * 8.64e7;
   const d0 = new Date(+date - domainHeight / 2);
   const d1 = new Date(+date + domainHeight / 2);
 
-  domainHeight / height
-
   const totalHeight = rowStep * 20 * 7;
   const dim = [width, totalHeight];
 
-  body.select('svg').attr('width', width).attr('height', totalHeight);
-
-  // const resolution = 30 / 3600000; // 30 pixels per hour
-  // const domainWidth = width / resolution;
-  // const targetDomainWidth = 2 * 7 * 24 * 60 * 60 * 1000; // two weeks
-  // const totalWidth = targetDomainWidth * resolution;
-
-  // const rowCount = 8;
-  // const contentHeight = rowCount * rowStep + margin.top;
-
-  // const d0 = new Date(+now - domainWidth / 2);
-  // const d1 = new Date(+now + domainWidth / 2);
-  // const initialDomain = [d0, d1];
-
-  // let minDate = d3.timeWeek.floor(date);
-  // let maxDate = d3.timeDay.offset(minDate, 7);
-
   const yScale = d3.scaleTime().domain([d0, d1]).range([totalHeight / 2 - height / 2, totalHeight / 2 + height / 2]);
   const xScale = d3.scaleTime().range([margin.left, width - margin.right]);
+
+  const fullRange = [0, totalHeight];
+  const fullDomain = [yScale.invert(0), yScale.invert(totalHeight)];
+  yScale.range(fullRange).domain(fullDomain);
+
+  const svg = body.select('svg');
+  svg.attr('width', width).attr('height', totalHeight);
+
+  if (svg.select('g.axis.left').empty()) {
+    svg.append('g').classed('axis left', true);
+  }
+  svg.select('g.axis.left')
+    .attr('transform', `translate(${64},0)`)
+    .call(d3.axisLeft(yScale).ticks(d3.timeWeek.every(1)))
+
+  if (body.select('header').empty()) {
+    body.append('header').append('button').text('Reset');
+  }
+  body.select('header').select('button').on('click', () => {
+    window.scrollTo({...args, top: yScale(d3.timeWeek.floor(now)), behavior: 'smooth'});
+  });
+  if (body.select('svg').select('g.shifts').empty()) {
+    body.select('svg').append('g').classed('shifts', true);
+  }
 
   const redraw = new Subject();
   redraw.pipe(
@@ -282,7 +260,6 @@ function byEmployee(employeeId: string, date = new Date()) {
     map(([y0, h]) => [yScale.invert(y0), yScale.invert(y0 + h)]),
     switchMap(domain => worker.getShiftsByEmployeeInRange(employeeId, domain)),
   ).subscribe((data: any) => {
-    // uggggly
     const [minTime, maxTime] = d3.extent(data.shifts
       .reduce((acc, s) => {
         calculateNorms(s);
@@ -295,15 +272,9 @@ function byEmployee(employeeId: string, date = new Date()) {
     xScale.domain([minTime, maxTime]);
 
     data.shifts.forEach(updatePositions);
-    render(template(data, dim), document.body);
+    draw(data, dim);
   });
 
-
-  const [minx, maxx] = xScale.range();
-  const extent: [[number, number], [number,number]] = [
-    [minx, -Infinity],
-    [maxx, Infinity]
-  ];
   const updatePositions = (shift: Shift) => {
     calculateNorms(shift);
     for (const comp of shift.components) {
@@ -317,45 +288,48 @@ function byEmployee(employeeId: string, date = new Date()) {
     return shift;
   }
 
-  const resetClickHandler = {
-    handleEvent(e) {
-      window.scrollTo({...args, top: yScale(d3.timeWeek.floor(now)), behavior: 'smooth'});
-    },
-    capture: true,
-  };
-  const shiftClickHandlerFn = (shift: Shift) => ({
-    handleEvent(e) {
-      cleanup();
-      byTime(shift.start);
-    },
-    capture: true,
-  });
+  function draw({shifts, employees}: {shifts: Shift[], employees: {[id: string]: Employee}}, [w, h]: number[]) {
+    svg.attr('width', w).attr('height', h).select('g.shifts').raise().selectAll('g.shift').data(shifts, d => d['_id']).join(
+      enter => enter.append('g').classed('shift employee', true)
+        .attr('transform', d => `translate(0,${d.y})`)
+        .call(s => s.append('g').classed('text', true)
+          .attr('transform', d => `translate(${d.x},${-rowTextHeight})`)
+          .call(s => s.append('text').classed('name', true).text(d => formatDateWeekday(d.start)))
+          .each(function (d) {
+            const s = d3.select(this);
+            const dx = (this.firstChild as SVGGraphicsElement).getBBox().width + 4;
+            s.append('g')
+              .attr('transform', `translate(${dx},0)`)
+              .call(drawMiniPie, d.duration / d.expectedDuration, d.employeeColor)
+              .call(s => s.append('text').attr('y', 5).attr('x', 24).text(formatDuration(d.duration)))
+          })
+        )
+        .call(s => s.selectAll('g.component').data(d => d.components).enter()
+          .append('g').classed('component', true)
+          .attr('transform', d => `translate(${d.x},0)`)
+          .call(s => s.append('title').text(d => `${formatTime(d.start)}-${formatTime(d.end)}`))
+          .call(s => s.append('rect')
+            .attr('rx', 8)
+            .attr('ry', 8)
+            .attr('width', d => d.w)
+            .attr('height', rectHeight)
+            .attr('fill', d => d.fill.toString()))
+          .each(filterShiftComponentTimeVisibility)
+        ).on('click', d => {
+          cleanup();
+          byTime(d.start);
+        }),
+      update => update
+        .call(s => s.select('g.text').attr('transform', d => `translate(${d.x},${-rowTextHeight})`))
+        .call(s => s.selectAll('g.component').data(d => d.components)
+          .attr('transform', d => `translate(${d.x},0)`)
+          .call(s => s.select('title').text(d => `${formatTime(d.start)}-${formatTime(d.end)}`))
+          .call(s => s.select('rect').attr('width', d => d.w))
+          .each(filterShiftComponentTimeVisibility)),
+      exit => exit.remove(),
+    )
+  }
 
-  const template = ({shifts, employees}: {shifts: Shift[], employees: {[id: string]: Employee}}, [w, h]: number[]) => html`
-  <header>
-    <button @click=${resetClickHandler}>Reset</button>
-  </header>
-  <header>
-    
-  </header>
-  <svg width=${w} height=${h}>
-  ${repeat(shifts, shift => shift.id, (shift, index) => litSvg`
-    <g @click=${shiftClickHandlerFn(shift)} class="shift" transform=${formatTransform([0, shift.y])}>
-      <g class="text" transform=${formatTransform([shift.x, -rowTextHeight])}>
-        ${shift.started ? drawPieAndTime(shift) : ''}
-        <text class="name" x=${shift.started ? 80 : 0} y=${5}>${formatDateWeekday(shift.start)}</text>
-      </g>
-      ${repeat(shift.components, c => c.id, (component, index) => litSvg`
-        <g transform=${formatTransform([component.x, 0])}>
-          <rect rx=8 ry=8 width=${component.w} height=${rectHeight} fill=${component.fill.toString()}></rect>
-          ${filterShiftComponentTimeVisibility(component)}
-          <title>${formatTime(component.start)}-${formatTime(component.end)}</title>
-        </g>
-      `)}
-    </g>
-  `)}
-  </svg>
-  `
   const onScroll = () => redraw.next([window.scrollY, window.innerHeight]);
   const onBeforeUnload = () => window.scrollTo(args);
 
@@ -363,15 +337,13 @@ function byEmployee(employeeId: string, date = new Date()) {
   window.addEventListener('beforeunload', onBeforeUnload);
 
   let args = {left: 0, top: yScale(d3.timeWeek.floor(date)), behavior: 'auto' as ScrollBehavior};
-  render(template({shifts: [], employees: {}}, dim), document.body);
   window.scrollTo(args);
 
-
   const cleanup = () => {
+    svg.select('g.axis.left').remove();
     window.removeEventListener('scroll', onScroll);
     window.removeEventListener('beforeunload', onBeforeUnload);
   };
-
 }
 
 
@@ -400,29 +372,32 @@ function calculateNorms(shift: Shift) {
   }
 }
 
-
-
-const drawPieAndTime = (shift: Shift) => litSvg`
-  ${drawMiniPie(shift.duration / shift.expectedDuration, shift.employeeColor)}
-  <text class="time" y="5" x="24" >${formatDuration(shift.duration)}</text>
-`;
-
-const filterShiftComponentTimeVisibility = (d: ShiftComponent) => litSvg`
-  <text class="time start" opacity=${d.showTime && d.w > START_MIN_WIDTH_THRESHOLD ? 1 : 0} y=${rectHeight/2} x=4>${formatTime(d.start)}</text>
-  <text class="time end" opacity=${d.showTime && d.w > END_MIN_WIDTH_THRESHOLD ? 1 : 0} y=${rectHeight/2} x=${d.w - 4}>${formatTime(d.end)}</text>
-`;
-
 const arc = d3.arc();
-function drawMiniPie(frac: number, employeeColor: EmployeeShiftColor, radius = 10) {
-  const c = employeeColorScale(employeeColor.toString());
+function drawMiniPie(s, frac: number, employeeColor: EmployeeShiftColor, radius = 10) {
   const endAngle = 2 * Math.PI * Math.min(Math.max(frac, 0), 1);
   const startAngle = 0;
-  return litSvg`
-  <g transform=${formatTransform([radius, radius/2])}>
-    <circle r="10" fill=${c[1]}></circle>
-    <path d=${arc({ startAngle, endAngle, outerRadius: radius, innerRadius: 0 })} fill=${c[0]}>
-  </g>
-  `;
+  if (s.select('g.pie').empty()) {
+    const c = employeeColorScale(employeeColor.toString());
+    s = s.append('g').classed('pie', true).attr('transform', `translate(${radius},0)`)
+      .call(s => s.append('circle').attr('r', 10).attr('fill', c[1]))
+      .call(s => s.append('path').attr('fill', c[0]));
+  }
+  return s.call(s => s.select('path').attr('d', arc({ startAngle, endAngle, outerRadius: radius, innerRadius: 0 })))
+}
+
+function filterShiftComponentTimeVisibility (d: ShiftComponent) {
+  const data = [
+    {'class': 'start', x: 4, 'opacity': d.showTime && d.w > START_MIN_WIDTH_THRESHOLD ? 1 : 0, text: formatTime(d.start)},
+    {'class': 'end', x: d.w - 4, 'opacity': d.showTime && d.w > END_MIN_WIDTH_THRESHOLD ? 1 : 0, text: formatTime(d.end)},
+  ];
+  return d3.select(this).selectAll('text.time').data(data, d => d['class']).join(
+    enter => enter.append('text').attr('class', d => `${d['class']} time`).attr('y', rectHeight / 2),
+    update => update,
+    exit => exit.remove()
+  )
+    .attr('x', d => d.x)
+    .attr('opacity', d => d.opacity)
+    .text(d => d.text);
 }
 
 const formatName = (empl: Employee) => `${empl.Name} ${empl.LastName}`;
