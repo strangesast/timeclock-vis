@@ -113,7 +113,7 @@ async def main(config):
     await update(mongo_db, amg_rpc_proxy)
 
     interval = timedelta(hours=1)
-    buf = 10 # added to interval, or used as timeout between retries
+    buf = 3000 # 5 minutes. added to interval, or used as timeout between retries
 
     try:
         # this is horribly broken.  runs fine on first, fails thereafter
