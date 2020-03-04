@@ -6,7 +6,7 @@ services:
       dockerfile: docker/nginx/Dockerfile
     image: strangesast/timeclock-vis_nginx
     ports:
-      - '8080:80'
+      - '80:80'
     depends_on:
       - api
       - ws
@@ -15,8 +15,6 @@ services:
       context: .
       dockerfile: docker/api/Dockerfile
     image: strangesast/timeclock-vis_api
-    ports:
-      - '8081:80'
     depends_on:
       - mongo
     environment:
@@ -44,8 +42,6 @@ services:
       - ./config.ini:/app/config.ini
   ws:
     image: strangesast/timeclock-vis_ws
-    ports:
-      - '8082:80'
     build:
       context: .
       dockerfile: docker/ws/Dockerfile
@@ -58,8 +54,6 @@ services:
       - ./config.ini:/app/config.ini
   mongo:
     image: mongo
-    ports:
-      - 27017:27017
 #    environment:
 #      MONGO_INITDB_ROOT_USERNAME: root
 #      MONGO_INITDB_ROOT_PASSWORD: password
