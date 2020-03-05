@@ -10,6 +10,7 @@ import logging
 import asyncio
 import aiomysql
 import configparser
+from pprint import pprint
 from datetime import datetime, timedelta
 from pymongo.errors import BulkWriteError
 from pymongo import ReplaceOne
@@ -37,6 +38,10 @@ async def init(mongo_db, mysql_db, proxy):
 
     await mongo_db.employees.create_index('id', unique=True)
     await mongo_db.employees.bulk_write(ops)
+
+    if 'polls' not in col_names:
+        await mongo_db.create_collection('polls');
+        await mongo_db.polls.create_index('date', unique=True)
 
     if 'state' not in col_names:
         await mongo_db.create_collection('state', capped=True, size=100000)
@@ -108,67 +113,63 @@ async def main(config):
     logging.info('running init')
     await init(mongo_db, mysql_client, amg_rpc_proxy)
 
-
-    logging.info('running first update')
-    await update(mongo_db, amg_rpc_proxy)
-
     interval = timedelta(hours=1)
-    buf = 3000 # 5 minutes. added to interval, or used as timeout between retries
+    buf = 60 # 1 minute. added to interval, or used as timeout between retries
 
     try:
-        # this is horribly broken.  runs fine on first, fails thereafter
         while True:
+
+            latest_poll = await mongo_db.polls.find_one({}, sort=[('date', pymongo.DESCENDING)])
+            latest_poll = latest_poll and latest_poll.get('date')
+            latest_sync = await mongo_db.sync_history.find_one({}, sort=[('date', pymongo.DESCENDING)])
+            latest_sync = latest_sync and latest_sync.get('date')
+
             now = datetime.now()
-            latest_poll = await get_poll(mongo_db, mysql_client)
-            s = max((latest_poll + interval - now).total_seconds(), 0) + buf
-            logging.info(f'sleeping for {s} seconds')
-            # wait until next poll, then update again
-            await asyncio.sleep(s)
-            await update(mongo_db, amg_rpc_proxy)
+            duration = max((latest_poll + interval - now).total_seconds(), buf)
+            print(f'sleeping for {duration} seconds')
+            await asyncio.sleep(duration)
+
+            while True:
+                async with mysql_client.cursor() as mysql_cursor:
+                    if latest_poll:
+                        await mysql_cursor.execute('select StartTime from tam.polllog where StartTime > %s order by StartTime desc', (latest_poll,))
+                    else:
+                        await mysql_cursor.execute('select StartTime from tam.polllog order by StartTime desc')
+                        
+                    if mysql_cursor.rowcount:
+                        polls = await mysql_cursor.fetchall()
+                        polls = [date for date, in polls]
+                        latest_poll = polls[0]
+                        polls = [{'date': date} for date in polls]
+                        await mongo_db.polls.insert_many(polls)
+
+                    if latest_poll and (latest_sync is None or latest_poll > latest_sync):
+                        break   
+
+                # if no new poll, wait 1 minute, check for poll again
+                print('sleeping for {buf} seconds')
+                await asyncio.sleep(buf)
+
+            now = datetime.now()
+            min_date = min(get_sunday(now), get_sunday(latest_sync)) if latest_sync else get_sunday(now - timedelta(days=365))
+            await update(mongo_db, amg_rpc_proxy, min_date)
+            await mongo_db.sync_history.insert_one({'date': now});
+
+
     except asyncio.CancelledError:
         pass
     finally:
+        print('cancelled')
         await amg_rpc_proxy.close()
         mysql_client.close()
         mongo_client.close()
 
 
-async def get_poll(mongo_db, mysql_client):
-    async with mysql_client.cursor() as mysql_cursor:
-        latest_poll = await mongo_db.polls.find_one({}, sort=[('date', pymongo.DESCENDING)])
-        if latest_poll is None:
-            await mysql_cursor.execute('select StartTime from tam.polllog order by StartTime desc')
-        else:
-            await mysql_cursor.execute('select StartTime from tam.polllog where StartTime > %s order by StartTime desc', (latest_poll['date'],))
-
-        if mysql_cursor.rowcount:
-            polls = [{'date': date} for date, *_ in await mysql_cursor.fetchall()]
-            result = await mongo_db.polls.insert_many(polls)
-            latest_poll = await mongo_db.polls.find_one({'_id': result.inserted_ids[0]})
-
-        if latest_poll is None:
-            raise Exception('no polls? somethings broken')
-
-        return latest_poll['date']
-
-
-async def update(mongo_db, proxy):
-    latest_sync = await mongo_db.sync_history.find_one({}, sort=[('date', pymongo.DESCENDING)])
-
+async def update(mongo_db, proxy, min_date: datetime):
     # useful if encoding strange types
     type_registry = TypeRegistry(fallback_encoder=timedelta_encoder)
     codec_options = CodecOptions(type_registry=type_registry)
     shifts_col = mongo_db.get_collection('shifts', codec_options=codec_options)
-
-    now = datetime.now()
-    interval = timedelta(days=14)
-
-    if latest_sync is None:
-        logging.info('running initialization.  this may take a while...')
-        sys.stdout.flush()
-        min_date = get_sunday(now - timedelta(days=365))
-    else:
-        min_date = min(latest_sync['max'] - interval, get_sunday(now))
 
     employee_ids = [int(empl['id']) for empl in await mongo_db.employees.find({}).to_list(1000)]
 
@@ -221,14 +222,6 @@ async def update(mongo_db, proxy):
                     }})
                 await mongo_db.components.update_one({'_id': component_id}, {'$set': {'shift': shift_id}})
 
-
-    await mongo_db.sync_history.insert_one({'date': now, 'min': min_date, 'max': max_date})
-
-    # lookup current state
-    #   remove any end != null
-    # lookup each 
-    # also lookup incomplete
-    # deduplicate
 
     values = []
     next_state = {}
