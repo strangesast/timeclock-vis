@@ -125,7 +125,16 @@ async def main(config):
             latest_sync = latest_sync and latest_sync.get('date')
 
             now = datetime.now()
-            duration = max((latest_poll + interval - now).total_seconds(), buf)
+            # check immediately if
+            #  no poll or
+            #  no sync or
+            #  sync < poll or
+            #  poll + interval < now or
+
+            print(f'{latest_poll=}')
+            print(f'{latest_sync=}')
+            print(f'{now=}')
+            duration = 0 if latest_poll is None or latest_sync is None or latest_sync < latest_poll or (d := (latest_poll + interval - now).total_seconds()) < 0 else d
             print(f'sleeping for {duration} seconds')
             await asyncio.sleep(duration)
 
@@ -138,7 +147,8 @@ async def main(config):
                         
                     if mysql_cursor.rowcount:
                         polls = await mysql_cursor.fetchall()
-                        polls = [date for date, in polls]
+                        # yuck
+                        polls = [date + timedelta(hours=5) for date, in polls]
                         latest_poll = polls[0]
                         polls = [{'date': date} for date in polls]
                         await mongo_db.polls.insert_many(polls)
@@ -147,12 +157,12 @@ async def main(config):
                         break   
 
                 # if no new poll, wait 1 minute, check for poll again
-                print('sleeping for {buf} seconds')
+                print(f'sleeping for {buf} seconds')
                 await asyncio.sleep(buf)
 
             now = datetime.now()
             min_date = min(get_sunday(now), get_sunday(latest_sync)) if latest_sync else get_sunday(now - timedelta(days=365))
-            await update(mongo_db, amg_rpc_proxy, min_date)
+            await update(mongo_db, amg_rpc_proxy, min_date, now)
             await mongo_db.sync_history.insert_one({'date': now});
 
 
@@ -165,7 +175,7 @@ async def main(config):
         mongo_client.close()
 
 
-async def update(mongo_db, proxy, min_date: datetime):
+async def update(mongo_db, proxy, min_date: datetime, now):
     # useful if encoding strange types
     type_registry = TypeRegistry(fallback_encoder=timedelta_encoder)
     codec_options = CodecOptions(type_registry=type_registry)
