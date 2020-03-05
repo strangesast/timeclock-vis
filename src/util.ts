@@ -1,4 +1,5 @@
 import * as d3 from 'd3';
+import { Employee } from './models';
 const LOCALE = 'en';
 
 export const employeeColorScale = (function() {
@@ -24,14 +25,6 @@ export enum ShiftState {
   Complete = 0,
   InProgress = 1,
   Upcoming = 2,
-}
-
-export interface Employee {
-  id: number;
-  name: {
-    first: string;
-    last: string;
-  }
 }
 
 export interface Shift {
@@ -93,6 +86,10 @@ export function formatDuration (f) {
   }
   return s + '.' + ('0' + seconds).slice(-2);
 };
+
+export function formatName(empl: Employee) {
+  return `${empl.Name} ${empl.LastName}`;
+}
 
 export function addHours(date: Date, hours: number): Date {
   const d = new Date(date);

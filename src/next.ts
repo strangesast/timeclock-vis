@@ -1,7 +1,7 @@
 import * as d3 from 'd3';
 import { Observable, BehaviorSubject, timer } from 'rxjs';
 import { switchMap, filter, map, scan, startWith, audit, auditTime, throttleTime } from 'rxjs/operators';
-import { formatDuration, formatDateWeekday, formatTime, inFieldOfView, throttle, employeeColorScale, debounce } from './util';
+import { formatName, formatDuration, formatDateWeekday, formatTime, inFieldOfView, throttle, employeeColorScale, debounce } from './util';
 import { ShiftState, Shift, Employee, ShiftComponent, ShiftComponentType, EmployeeID, TranslateExtent } from './models';
 import * as Comlink from 'comlink';
 
@@ -803,13 +803,8 @@ function calculateNorms(shift: Shift) {
   }
 }
 
-function formatName(empl: Employee) {
-  return `${empl.Name} ${empl.LastName}`;
-}
-
 function formatDateSimple(date: Date): string {
   const m = date.getMonth() + 1;
   const d = date.getDate();
   return `${m}/${d}`;
 }
-

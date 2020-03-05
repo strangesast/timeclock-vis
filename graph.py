@@ -17,22 +17,22 @@ async def get_graph_data(mongo_db):
             for i, b in enumerate(buckets)]
     pipeline = [
         {'$match': {'end': {'$ne': None}}},
+        {'$addFields': {
+            'start': {'$dateToParts': {'date': '$start', 'timezone': 'America/New_York'}},
+            'end': {'$dateToParts': {'date': '$end', 'timezone': 'America/New_York'}},
+        }},
+        {'$addFields': {
+            'start': {'$sum': ['$start.second', {'$multiply': ['$start.minute', 60]}, {'$multiply': ['$start.hour', 3600]}]},
+            'end': {'$sum': ['$end.second', {'$multiply': ['$end.minute', 60]}, {'$multiply': ['$end.hour', 3600]}]},
+        }},
+        {'$addFields': {
+            'end': {'$cond': {'if': {'$gte': ['$start', '$end']}, 'then': {'$sum': ['$end', 8.64e4]}, 'else': '$end'}}
+        }},
+        {'$addFields': {'buckets': buckets}},
+        {'$addFields': {'buckets': {'$filter': {'input': '$buckets', 'cond': {'$ne': ['$$this', None]}}}}},
+        {'$unwind': '$buckets'},
         {'$facet': {
             'data': [
-                {'$addFields': {
-                    'start': {'$dateToParts': {'date': '$start', 'timezone': 'America/New_York'}},
-                    'end': {'$dateToParts': {'date': '$end', 'timezone': 'America/New_York'}},
-                }},
-                {'$addFields': {
-                    'start': {'$sum': ['$start.second', {'$multiply': ['$start.minute', 60]}, {'$multiply': ['$start.hour', 3600]}]},
-                    'end': {'$sum': ['$end.second', {'$multiply': ['$end.minute', 60]}, {'$multiply': ['$end.hour', 3600]}]},
-                }},
-                {'$addFields': {
-                    'end': {'$cond': {'if': {'$gte': ['$start', '$end']}, 'then': {'$sum': ['$end', 8.64e4]}, 'else': '$end'}}
-                }},
-                {'$addFields': {'buckets': buckets}},
-                {'$addFields': {'buckets': {'$filter': {'input': '$buckets', 'cond': {'$ne': ['$$this', None]}}}}},
-                {'$unwind': '$buckets'},
                 {'$group': {'_id': {'employee': '$employee', 'bucket': '$buckets'}, 'count': {'$sum': 1}}},
                 {'$group': {
                     '_id': '$_id.bucket',
@@ -44,9 +44,10 @@ async def get_graph_data(mongo_db):
                 {'$addFields': {'buckets': {'$arrayToObject': '$buckets'}}},
             ],
             'employees': [
-                {'$group': {'_id': '$employee'}},
+                {'$group': {'_id': '$employee', 'total': {'$sum': 1}}},
                 {'$lookup': {'from': 'employees', 'localField': '_id', 'foreignField': 'id', 'as': 'employee'}},
                 {'$unwind': '$employee'},
+                {'$sort': {'total': -1}},
                 {'$replaceRoot': {'newRoot': '$employee'}},
             ],
         }}
