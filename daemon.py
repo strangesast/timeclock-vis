@@ -125,12 +125,6 @@ async def main(config):
             latest_sync = latest_sync and latest_sync.get('date')
 
             now = datetime.now()
-            # check immediately if
-            #  no poll or
-            #  no sync or
-            #  sync < poll or
-            #  poll + interval < now or
-
             print(f'{latest_poll=}')
             print(f'{latest_sync=}')
             print(f'{now=}')
@@ -138,6 +132,7 @@ async def main(config):
             print(f'sleeping for {duration} seconds')
             await asyncio.sleep(duration)
 
+            # update polls, wait for next poll update after interval
             while True:
                 async with mysql_client.cursor() as mysql_cursor:
                     if latest_poll:
@@ -148,7 +143,8 @@ async def main(config):
                     if mysql_cursor.rowcount:
                         polls = await mysql_cursor.fetchall()
                         # yuck
-                        polls = [date + timedelta(hours=5) for date, in polls]
+                        #polls = [date + timedelta(hours=5) for date, in polls]
+                        polls = [date for date, in polls]
                         latest_poll = polls[0]
                         polls = [{'date': date} for date in polls]
                         await mongo_db.polls.insert_many(polls)
@@ -162,6 +158,7 @@ async def main(config):
 
             now = datetime.now()
             min_date = min(get_sunday(now), get_sunday(latest_sync)) if latest_sync else get_sunday(now - timedelta(days=365))
+            print('min_date', min_date);
             await update(mongo_db, amg_rpc_proxy, min_date, now)
             await mongo_db.sync_history.insert_one({'date': now});
 
