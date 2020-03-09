@@ -18,6 +18,8 @@ const svg = d3.select(document.body).append('svg')
 const innerRadius = 100;
 const outerRadius = 200;
 
+const exclude = ['70', '67', '51', '74', '79', '57', '80'];
+
 // const x = d3.scaleBand().range([0, 2 * Math.PI]).align(0);
 // const y = d3.scaleLinear()
 //     .range([innerRadius * innerRadius, outerRadius * outerRadius]);
@@ -60,10 +62,8 @@ svg.append('g').classed('legend', true);
   svg.select('g.axis.bottom').call(d3.axisBottom(x)).attr('transform', `translate(0, ${height - margin.bottom})`);
 
   let data = content['data'];
-  const cumTotal = data.reduce((acc, {total}) => Math.max(acc, total), 0);
 
-  y.domain([0, cumTotal]);
-  const employeeIds: string[] = [];
+  let employeeIds: string[] = [];
   const employeeMap = {};
   const employees = content['employees'] as Employee[];
   for (const empl of employees) {
@@ -71,25 +71,44 @@ svg.append('g').classed('legend', true);
     employeeIds.push(employeeId);
     employeeMap[employeeId] = empl;
   }
+
+  // employeeIds = employeeIds.sort((a, b) => !exclude.includes(a) ? 1 : -1);
+
   const stack = d3.stack().keys(employeeIds)
-    .value((d, key) => {
-      return d.buckets[key] || 0;
-    });
+    .value((d, key) => d.buckets[key] || 0);
   
   data = data.sort((a, b) => b.total - a.total);
-  const series = stack(data).map(d => (d.forEach((v: any) => v.key = d.key), d));
 
-  const g = svg.select('g.data').selectAll('g').data(series)
-    .join('g') as any
+  const cumTotal = data.reduce((acc, {total}) => Math.max(acc, total), 0);
+  y.domain([0, cumTotal]);
 
-  const graph = g.attr('fill', d => colorScale(d.key))
-    .selectAll('rect')
-    .data(d => d)
-    .join('rect')
-    .attr('y', d => y(d[1]))
-    .attr('height', d => y(d[0]) - y(d[1]))
-    .attr('width', x.bandwidth())
-    .attr('x', (d: any) => x(d['data']['_id']))
+  const series = stack(data).map(d => {
+    d.forEach((v: any) => v.key = d.key);
+    return d;
+  });
+
+  function draw() {
+    svg.select('g.data').selectAll('g').data(series)
+      .join('g')
+      .attr('fill', (d: any) => colorScale(d.key))
+      .selectAll('rect')
+      .data(d => d)
+      .join('rect')
+      .each(function (d) {
+        const s = d3.select(this);
+        const b = d['data']['_id'] as unknown;
+        const [y0, y1] = d.map(v => y(v));
+        // const dy = y1 - y(d.data.total) / 2;
+        const dy = y1;
+        const dx = x(b as string);
+        s.attr('y', dy)
+          .attr('height', y0 - y1)
+          .attr('x', dx)
+          .attr('width', x.bandwidth())
+      })
+  }
+
+  draw();
 
   svg.select('g.legend')
     .call(s => s.append('rect').attr('width', 200).attr('height', employees.length * 20).attr('fill', 'transparent'))
@@ -117,9 +136,9 @@ svg.append('g').classed('legend', true);
       svg.select('g.data').selectAll('g').attr('opacity', (_d: any) => _d['key'] != d.id ? 0.7 : 1);
     })
     .on('click', d => {
-      svg.select('g.data').selectAll('g').data(series.filter(_d => _d.key == d.id))
+      svg.select('g.data').selectAll('g').data(series.filter((_d: any) => _d.key == d.id))
         .join('g')
-        .attr('fill', d => colorScale(d.key))
+        .attr('fill', (d: any) => colorScale(d.key))
         .attr('opacity', 1)
         .selectAll('rect')
         .data(d => d)
@@ -132,17 +151,6 @@ svg.append('g').classed('legend', true);
         })
         .attr('width', x.bandwidth())
     })
-  svg.select('g.legend').on('mouseleave', d => {
-    svg.select('g.data').selectAll('g').data(series)
-      .join('g')
-      .attr('fill', d => colorScale(d.key))
-      .selectAll('rect')
-      .data(d => d)
-      .join('rect')
-      .attr('y', d => y(d[1]))
-      .attr('height', d => y(d[0]) - y(d[1]))
-      .attr('width', x.bandwidth())
-      .attr('x', (d: any) => x(d['data']['_id']))
-  });
+  svg.select('g.legend').on('mouseleave', d => draw());
 })();
 // d => Math.sqrt(y(d)), y
