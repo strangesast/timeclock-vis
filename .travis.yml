@@ -47,7 +47,7 @@ deploy:
     on:
       branch: master
   - provider: script
-    script: bash ./docker/push.sh
+    script: docker-compose push
     verbose: true
     on:
       branch: master
