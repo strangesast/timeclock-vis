@@ -92,6 +92,7 @@ interface SigBase {
   type: string;
   getShiftsInRange: (range: DateRange) => Promise<ShiftsResponse>;
   getShiftsByEmployeeInRange: (employeeId: EmployeeID, range: DateRange) => Promise<ShiftsResponse>;
+  getGraphData: (range?: DateRange) => Promise<GraphDataResponse>;
 }
 
 interface Map<T> {
@@ -107,7 +108,8 @@ export interface ShiftsResponse {
 
 interface SigMocking extends SigBase {
   type: 'mocking';
-  data: any;
+  now: Date;
+  data: {shifts: Shift[], employees: {[id: string]: Employee}};
   initializeData: (date: Date) => Promise<void>;
 }
 
@@ -116,3 +118,13 @@ interface SigFetch extends SigBase {
 }
 
 export type Sig = SigMocking | SigFetch;
+
+export interface GraphDataResponse {
+  employees: Employee[];
+  data: {
+    _id: string;
+    buckets: {[employeeId: string]: number};
+    total: number;
+  }[];
+  columns: string[];
+}

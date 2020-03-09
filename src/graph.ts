@@ -1,7 +1,10 @@
+declare const GENERATE_MOCKING: boolean;
 import * as d3 from 'd3';
 import { Employee } from './models';
 import { formatName } from './util';
+import * as Comlink from 'comlink';
 
+const worker = Comlink.wrap(new Worker('./data.worker.ts', { type: 'module' })) as any;
 
 const [width, height] = [1000, 1000];
 
@@ -33,18 +36,33 @@ svg.append('g').classed('axis bottom', true);
 svg.append('g').classed('legend', true);
 
 (async function () {
-  const url = new URL(`/data/graph`, location.origin);
-  const res = await fetch(url.toString())
-  const content = await res.json();
+  // const url = new URL(`/data/graph`, location.origin);
+  // const res = await fetch(url.toString())
+  // const content = await res.json();
+
+  let now;
+  if (GENERATE_MOCKING) {
+    now = d3.timeWeek.floor(new Date());
+    now.setDate(now.getDate() + 3);
+    now.setHours(14, 22, 0, 0);
+  
+    await worker.initializeData(now);
+  } else {
+    now = new Date();
+  }
+ 
+  const content = await worker.getGraphData();
 
   const columns = content['columns'];
 
-  y.domain([0, 1400]);
   x.domain(columns);
 
   svg.select('g.axis.bottom').call(d3.axisBottom(x)).attr('transform', `translate(0, ${height - margin.bottom})`);
 
   let data = content['data'];
+  const cumTotal = data.reduce((acc, {total}) => Math.max(acc, total), 0);
+
+  y.domain([0, cumTotal]);
   const employeeIds: string[] = [];
   const employeeMap = {};
   const employees = content['employees'] as Employee[];
@@ -60,7 +78,6 @@ svg.append('g').classed('legend', true);
   
   data = data.sort((a, b) => b.total - a.total);
   const series = stack(data).map(d => (d.forEach((v: any) => v.key = d.key), d));
-  console.log(series);
 
   const g = svg.select('g.data').selectAll('g').data(series)
     .join('g') as any
@@ -116,8 +133,6 @@ svg.append('g').classed('legend', true);
         .attr('width', x.bandwidth())
     })
   svg.select('g.legend').on('mouseleave', d => {
-    console.log(d3.event.target);
-    console.log('mouseleave');
     svg.select('g.data').selectAll('g').data(series)
       .join('g')
       .attr('fill', d => colorScale(d.key))

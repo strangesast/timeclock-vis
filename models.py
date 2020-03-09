@@ -51,3 +51,15 @@ class ShiftsResponse(TypedDict):
 class EmployeeShiftsResponse(TypedDict):
     employee: Employee
     shifts: List[Shift]
+
+
+class GraphDataItem(TypedDict):
+    _id: str
+    buckets: Dict[str, int]
+    total: int
+
+
+class GraphDataResponse(TypedDict):
+    employees: List[Employee]
+    data: List[GraphDataItem]
+    columns: List[str]

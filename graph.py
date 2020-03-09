@@ -5,8 +5,9 @@ from pprint import pprint
 from datetime import datetime
 
 from util import get_mongo_db
+from models import GraphDataResponse
 
-async def get_graph_data(mongo_db):
+async def get_graph_data(mongo_db) -> GraphDataResponse:
     frac = 2 # half hour
     # buckets of seconds
     l = 48 * frac
@@ -52,9 +53,14 @@ async def get_graph_data(mongo_db):
             ],
         }}
     ]
-    data = await mongo_db.components.aggregate(pipeline).to_list(1)
+    doc = None
+    async for doc in mongo_db.components.aggregate(pipeline):
+        break
+    if doc is None:
+        raise Exception('failed to retrieve graph data')
+    employees, data = doc['employees'], doc['data']
     columns = list(map(str, range(24 * frac)))
-    return {'columns': columns, **data[0]}
+    return {'columns': columns, 'employees': employees, 'data': data}
 
 
 async def main():

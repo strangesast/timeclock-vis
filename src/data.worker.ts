@@ -13,8 +13,12 @@ if (GENERATE_MOCKING) {
 
   obj = {
     type: 'mocking',
+    now: null,
     data,
     async initializeData(date = new Date()) {
+      if (obj.type == 'mocking') {
+        obj.now = date;
+      }
       data = mocking.generateData(date);
     },
     async getShiftsInRange([minDate, maxDate]: models.DateRange): Promise<models.ShiftsResponse> {
@@ -47,6 +51,37 @@ if (GENERATE_MOCKING) {
       }
       return {range: [minDate, maxDate], shifts: filteredShifts, employees: {[employeeId]: employee}, employeeIds: [employeeId]};
     },
+    async getGraphData(dateRange: models.DateRange): Promise<models.GraphDataResponse> {
+      const {shifts, employees} = data as {shifts: models.Shift[], employees: {[id: string]: models.Employee}};
+      const employeesList = [];
+      const employeeIds = [];
+      for (const employeeId in employees) {
+        employeeIds.push(employeeId);
+        employeesList.push(employees[employeeId]);
+      }
+      const now = obj.type == 'mocking' ? obj.now : new Date();
+      const l = 48;
+      const columns = Array.from(Array(l)).map((_, i) => i.toString());
+      const graphData = columns.map(_id => ({_id, total: 0, buckets: employeeIds.reduce((acc, id) => ({...acc, [id]: 0}), {})}));
+      for (const shift of shifts) {
+        const employeeId = shift.employee;
+        for (const component of shift.components) {
+          let start, end;
+          ({start, end} = component);
+          end = end || now;
+          ([start, end] = [start, end].map(d => d.getHours() * 60 * 60 + d.getMinutes() * 60 + d.getSeconds()));
+          if (start > end) {
+            end += 24 * 60 * 60;
+          }
+          ([start, end] = [start, end].map(g => Math.floor(g / 1800)));
+          for (let i = start; i < end; i++) {
+            graphData[i % l].buckets[employeeId] += 1;
+            graphData[i % l].total += 1;
+          }
+        }
+      }
+      return {employees: employeesList, data: graphData, columns};
+    }
   };
 } else {
   obj = {
@@ -74,6 +109,15 @@ if (GENERATE_MOCKING) {
       }
       const content = await res.json();
       interpretResponse(content);
+      return content;
+    },
+    async getGraphData(dateRange?: models.DateRange): Promise<models.GraphDataResponse> {
+      const url = new URL(`/data/graph`, location.origin);
+      const res = await fetch(url.toString())
+      if (res.status < 200 || res.status >= 400) {
+        throw new Error(`failed to fetch shifts: ${res.statusText}`);
+      }
+      const content = await res.json();
       return content;
     },
   }
