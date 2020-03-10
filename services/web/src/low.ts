@@ -2,11 +2,13 @@ import * as d3 from 'd3';
 import { Subject } from 'rxjs';
 import * as Comlink from 'comlink';
 import { switchMap, map, throttleTime } from 'rxjs/operators';
+import { socket } from './socket';
 
 import { Employee, ShiftComponent, Shift, ShiftComponentType, EmployeeShiftColor, ShiftState } from './models';
 import { employeeColorScale, formatDuration, formatTime, formatDateWeekday } from './util';
 
 declare const GENERATE_MOCKING: boolean;
+declare const NODE_ENV: string;
 const worker = Comlink.wrap(new Worker('./data.worker.ts', { type: 'module' })) as any;
 
 let now: Date;
@@ -418,3 +420,7 @@ const smooth = false;
 document.addEventListener('DOMContentLoaded', async () => {
   await main();
 });
+
+
+const SOCKET_URL = `ws://${window.location.host}/socket`;
+socket(SOCKET_URL).pipe(switchMap(v => v)).subscribe(val => console.log(val));

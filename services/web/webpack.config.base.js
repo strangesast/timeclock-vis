@@ -61,6 +61,8 @@ module.exports = {
     }),
     new DefinePlugin({
       GENERATE_MOCKING: yn(process.env.GENERATE_MOCKING, {default: false}),
+      DEBUG: yn(process.env.DEBUG, {default: true}),
+      NODE_ENV: process.env.NODE_ENV || '"development"',
     }),
     new CopyPlugin([ {from: 'static', to: 'static'}, ]),
   ],

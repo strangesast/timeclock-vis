@@ -21,7 +21,7 @@ from services.util import get_async_rpc_connection, get_mysql_db, get_mongo_db, 
 from .calculate_rows import recalculate
 
 
-async def init(mongo_db, mysql_db, proxy):
+async def init(mongo_db, mysql_db):
     col_names = await mongo_db.list_collection_names()
 
     mysql_cursor = await mysql_db.cursor(aiomysql.DictCursor)
@@ -99,7 +99,6 @@ async def init(mongo_db, mysql_db, proxy):
     await mongo_db.components.create_index('employee')
 
 
-
 async def main(config):
     # do some init stuff
     # on interval, recheck
@@ -111,7 +110,7 @@ async def main(config):
 
     mongo_db = mongo_client.timeclock
     logging.info('running init')
-    await init(mongo_db, mysql_client, amg_rpc_proxy)
+    await init(mongo_db, mysql_client)
 
     interval = timedelta(hours=1)
     buf = 60 # 1 minute. added to interval, or used as timeout between retries
@@ -125,11 +124,11 @@ async def main(config):
             latest_sync = latest_sync and latest_sync.get('date')
 
             now = datetime.now()
-            print(f'{latest_poll=}')
-            print(f'{latest_sync=}')
-            print(f'{now=}')
+            logging.info(f'{latest_poll=}')
+            logging.info(f'{latest_sync=}')
+            logging.info(f'{now=}')
             duration = 0 if latest_poll is None or latest_sync is None or latest_sync < latest_poll or (d := (latest_poll + interval - now).total_seconds()) < 0 else d
-            print(f'sleeping for {duration} seconds')
+            logging.info(f'sleeping for {duration} seconds')
             await asyncio.sleep(duration)
 
             # update polls, wait for next poll update after interval
@@ -153,20 +152,24 @@ async def main(config):
                         break   
 
                 # if no new poll, wait 1 minute, check for poll again
-                print(f'sleeping for {buf} seconds')
+                logging.info(f'sleeping for {buf} seconds')
                 await asyncio.sleep(buf)
 
             now = datetime.now()
             min_date = min(get_sunday(now), get_sunday(latest_sync)) if latest_sync else get_sunday(now - timedelta(days=365))
-            print('min_date', min_date);
+            logging.info(f'{min_date=}')
+
+            
+
             await update(mongo_db, amg_rpc_proxy, min_date, now)
-            await mongo_db.sync_history.insert_one({'date': now});
+
+            await mongo_db.sync_history.insert_one({'date': now})
 
 
     except asyncio.CancelledError:
         pass
     finally:
-        print('cancelled')
+        logging.info('cancelled')
         await amg_rpc_proxy.close()
         mysql_client.close()
         mongo_client.close()
@@ -178,10 +181,20 @@ async def update(mongo_db, proxy, min_date: datetime, now):
     codec_options = CodecOptions(type_registry=type_registry)
     shifts_col = mongo_db.get_collection('shifts', codec_options=codec_options)
 
-    employee_ids = [int(empl['id']) for empl in await mongo_db.employees.find({}).to_list(1000)]
+    employee_ids = [int(empl['id']) for empl in await mongo_db.employees.find({}).to_list(None)]
 
-    async for group, max_date in update_shifts(proxy, employee_ids, min_date, now):
-        for component in group:
+    logging.info('update')
+    now = datetime.now()
+    interval = timedelta(days=14)
+
+    while min_date < now:
+        max_date = min_date + interval
+        logging.info(f'{min_date} - {max_date}')
+    
+        employee_timecards = await proxy.GetTimecards(employee_ids, min_date, max_date, False)
+        timecards = [item for tc in employee_timecards for item in parse_timecard(tc)]
+    
+        for component in timecards:
             employee_id, start, end = [component[k] for k in ['employee', 'start', 'end']]
 
             if start is None:
@@ -229,6 +242,7 @@ async def update(mongo_db, proxy, min_date: datetime, now):
                     }})
                 await mongo_db.components.update_one({'_id': component_id}, {'$set': {'shift': shift_id}})
 
+        min_date = max_date
 
     values = []
     next_state = {}
@@ -258,7 +272,6 @@ async def update(mongo_db, proxy, min_date: datetime, now):
             values.append(value)
 
     await mongo_db.state.insert_one({'date': now, 'values': values})
-
     await recalculate(mongo_db, min_date)
 
 
@@ -270,26 +283,28 @@ async def update_shifts(proxy, employee_ids, min_date, end_date = datetime.now()
 
         employee_timecards = await proxy.GetTimecards(employee_ids, min_date, max_date, False)
         now = datetime.now()
-        group = []
-        for each in employee_timecards:
-            employee_id, timecards = str(each['EmployeeId']), each['Timecards']
-
-            for item in timecards:
-                punches = []
-                obj = {'punches': punches, 'employee': employee_id}
-                for k0, k1 in [('date', 'Date'), ('isManual', 'IsManual'), ('hours', 'Reg')]:
-                    obj[k0] = item.get(k1)
-                for k0, k1 in [('start', 'StartPunch'), ('end', 'StopPunch')]:
-                    if (p := item.get(k1)):
-                        obj[k0] = p['OriginalDate'] + offset
-                        punches.append(p['Id'])
-                    else:
-                        obj[k0] = None
-                # this breaks if start time was amended
-                group.append(obj)
+        group = [item for tc in employee_timecards for item in parse_timecard(tc)]
 
         yield group, max_date
         min_date = max_date
+
+
+def parse_timecard(timecard, offset = timedelta(hours=5)):
+    employee_id, timecards = str(timecard['EmployeeId']), timecard['Timecards']
+
+    for item in timecards:
+        punches = []
+        obj = {'punches': punches, 'employee': employee_id}
+        for k0, k1 in [('date', 'Date'), ('isManual', 'IsManual'), ('hours', 'Reg')]:
+            obj[k0] = item.get(k1)
+        for k0, k1 in [('start', 'StartPunch'), ('end', 'StopPunch')]:
+            if (p := item.get(k1)):
+                obj[k0] = p['OriginalDate'] + offset
+                punches.append(p['Id'])
+            else:
+                obj[k0] = None
+        # this breaks if start time was amended
+        yield obj
 
 
 async def update_shift_stats(db):

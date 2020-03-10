@@ -3,9 +3,13 @@
 # accept websocket connections at /socket
 # update clients as required
 # log?
+import asyncio
+import pymongo
 import configparser
-from aiohttp import web
+from weakref import WeakSet
+from aiohttp import web, WSCloseCode
 from pymongo.cursor import CursorType
+from bson.json_util import dumps
 
 from services.util import get_mongo_db
 
@@ -14,31 +18,56 @@ async def websocket_handler(request):
     ws = web.WebSocketResponse()
     await ws.prepare(request)
 
-    db = request.app['db'].timeclock;
-    cursor = db.state.find(cursor_type=CursorType.TAILABLE, await_data=True)
-    while True:
-        if not cursor.alive:
-            now = datetime.datetime.utcnow()
-            # While collection is empty, tailable cursor dies immediately
-            await asyncio.sleep(1)
-            cursor = collection.find(cursor_type=CursorType.TAILABLE, await_data=True)
-
-        async for value in cursor:
-            print(value)
-
-    # async for msg in ws:
-    #     if msg.type == aiohttp.WSMsgType.TEXT:
-    #         if msg.data == 'close':
-    #             await ws.close()
-    #         else:
-    #             await ws.send_str(msg.data + '/answer')
-    #     elif msg.type == aiohttp.WSMsgType.ERROR:
-    #         print('ws connection closed with exception %s' %
-    #               ws.exception())
-
-    # print('websocket connection closed')
+    request.app['websockets'].add(ws)
+    db = request.app['db'].timeclock
+    latest_state = await db.state.find_one({}, sort=[('_id', pymongo.DESCENDING)])
+    await ws.send_str(dumps(latest_state))
+    try:
+        async for msg in ws:
+            pass
+    finally:
+        request.app['websockets'].discard(ws)
 
     return ws
+
+
+async def background(app):
+    try:
+        db = app['db'].timeclock;
+        websockets = app['websockets']
+
+        while True:
+            latest_state = await db.state.find_one({}, sort=[('_id', pymongo.DESCENDING)])
+            query = {'_id': {'$gt': latest_state['_id']}} if latest_state else {}
+            cursor = db.state.find(query, cursor_type=CursorType.TAILABLE_AWAIT)
+            while True:
+                if not cursor.alive:
+                    await asyncio.sleep(1)
+                    break
+
+                #await asyncio.sleep(1)
+                #i += 1
+                #print(f'{i=}, {len(websockets)=}')
+                #await asyncio.gather(*[ws.send_str(dumps(str(i))) for ws in websockets.copy()])
+
+                async for latest_state in cursor:
+                    for ws in websockets:
+                        ws.send_str(dumps(latest_state))
+                
+    except asyncio.CancelledError:
+        await asyncio.gather(*[ws.close(code=WSCloseCode.GOING_AWAY, message='Server shutdown') for ws in websockets])
+
+    finally:
+        pass
+
+
+async def start_background_tasks(app):
+    app['background'] = asyncio.create_task(background(app))
+
+
+async def cleanup_background_tasks(app):
+    app['background'].cancel()
+    await app['background']
 
 
 async def main():
@@ -46,7 +75,10 @@ async def main():
     config.read('config.ini')
     app = web.Application()
     app['db'] = await get_mongo_db(config['MONGO'])
-    app.add_routes([web.get('/ws', websocket_handler)])
+    app['websockets'] = WeakSet()
+    app.on_startup.append(start_background_tasks)
+    app.on_cleanup.append(cleanup_background_tasks)
+    app.add_routes([web.get('/socket', websocket_handler)])
     return app
 
 
