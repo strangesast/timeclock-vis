@@ -12,6 +12,7 @@ import aiomysql
 import configparser
 from pprint import pprint
 from datetime import datetime, timedelta
+from pytz import timezone
 from pymongo.errors import BulkWriteError
 from pymongo import ReplaceOne
 from bson.codec_options import CodecOptions, TypeRegistry
@@ -159,15 +160,13 @@ async def main(config):
             min_date = min(get_sunday(now), get_sunday(latest_sync)) if latest_sync else get_sunday(now - timedelta(days=365))
             logging.info(f'{min_date=}')
 
-            
-
             await update(mongo_db, amg_rpc_proxy, min_date, now)
-
+            await recalculate(mongo_db, min_date)
             await mongo_db.sync_history.insert_one({'date': now})
-
 
     except asyncio.CancelledError:
         pass
+
     finally:
         logging.info('cancelled')
         await amg_rpc_proxy.close()
@@ -272,11 +271,9 @@ async def update(mongo_db, proxy, min_date: datetime, now):
             values.append(value)
 
     await mongo_db.state.insert_one({'date': now, 'values': values})
-    await recalculate(mongo_db, min_date)
 
 
 async def update_shifts(proxy, employee_ids, min_date, end_date = datetime.now(), interval = timedelta(days=14)):
-    offset = timedelta(hours=5)
     while min_date < end_date:
         max_date = min_date + interval
         logging.info(f'{min_date} - {max_date}')
@@ -289,9 +286,9 @@ async def update_shifts(proxy, employee_ids, min_date, end_date = datetime.now()
         min_date = max_date
 
 
-def parse_timecard(timecard, offset = timedelta(hours=5)):
+def parse_timecard(timecard):
     employee_id, timecards = str(timecard['EmployeeId']), timecard['Timecards']
-
+    tz = timezone('US/Eastern')
     for item in timecards:
         punches = []
         obj = {'punches': punches, 'employee': employee_id}
@@ -299,7 +296,7 @@ def parse_timecard(timecard, offset = timedelta(hours=5)):
             obj[k0] = item.get(k1)
         for k0, k1 in [('start', 'StartPunch'), ('end', 'StopPunch')]:
             if (p := item.get(k1)):
-                obj[k0] = p['OriginalDate'] + offset
+                obj[k0] = tz.localize(p['OriginalDate'])
                 punches.append(p['Id'])
             else:
                 obj[k0] = None
