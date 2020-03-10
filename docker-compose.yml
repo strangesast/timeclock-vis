@@ -1,10 +1,10 @@
 version: '3.7'
 services:
-  nginx:
+  web:
     build:
       context: .
-      dockerfile: docker/nginx/Dockerfile
-    image: strangesast/timeclock-vis_nginx
+      dockerfile: docker/web/Dockerfile
+    image: strangesast/timeclock-vis_web
     ports:
       - '80:80'
     depends_on:

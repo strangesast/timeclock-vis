@@ -5,8 +5,9 @@
 # log?
 import configparser
 from aiohttp import web
-from util import get_mongo_db
 from pymongo.cursor import CursorType
+
+from services.util import get_mongo_db
 
 
 async def websocket_handler(request):

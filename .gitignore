@@ -1,9 +1,0 @@
-credentials.ini
-
-__pycache__/
-/env*/
-/dist/
-/node_modules/
-/data/
-*~
-report*.json

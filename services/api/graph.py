@@ -4,8 +4,8 @@ import configparser
 from pprint import pprint
 from datetime import datetime
 
-from util import get_mongo_db
-from models import GraphDataResponse
+from services.util import get_mongo_db
+from services.models import GraphDataResponse
 
 async def get_graph_data(mongo_db) -> GraphDataResponse:
     frac = 2 # half hour

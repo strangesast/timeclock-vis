@@ -1,6 +1,7 @@
 from python:3.8
 workdir /app
-copy daemon.requirements.txt requirements.txt
+copy services/daemon/requirements.txt .
 run pip install -r requirements.txt
-copy daemon.py util.py models.py calculate_rows.py ./
-cmd ["python3.8", "-u", "daemon.py"]
+copy services/daemon/ services/daemon/
+copy services/util.py services/models.py ./services/
+cmd ["python3.8", "-u", "-m", "services.daemon.main"]

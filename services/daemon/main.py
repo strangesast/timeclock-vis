@@ -16,9 +16,9 @@ from pymongo.errors import BulkWriteError
 from pymongo import ReplaceOne
 from bson.codec_options import CodecOptions, TypeRegistry
 
-import models
-from util import get_async_rpc_connection, get_mysql_db, get_mongo_db, EmployeeShiftColor
-from calculate_rows import recalculate
+from services import models
+from services.util import get_async_rpc_connection, get_mysql_db, get_mongo_db, EmployeeShiftColor
+from .calculate_rows import recalculate
 
 
 async def init(mongo_db, mysql_db, proxy):
