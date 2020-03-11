@@ -62,7 +62,9 @@ if (GENERATE_MOCKING) {
       const now = obj.type == 'mocking' ? obj.now : new Date();
       const l = 48;
       const columns = Array.from(Array(l)).map((_, i) => i.toString());
-      const graphData = columns.map(_id => ({_id, total: 0, buckets: employeeIds.reduce((acc, id) => ({...acc, [id]: 0}), {})}));
+      const graphData = columns
+        .map(_id => ({_id, total: 0, buckets: employeeIds.reduce((acc, id) => ({...acc, [id]: 0}), {})}))
+        .sort((a, b) => b.total - a.total);
       for (const shift of shifts) {
         const employeeId = shift.employee;
         for (const component of shift.components) {
@@ -118,7 +120,9 @@ if (GENERATE_MOCKING) {
         throw new Error(`failed to fetch shifts: ${res.statusText}`);
       }
       const content = await res.json();
-      return content;
+      let {data, employees, columns} = content;
+      data = data.sort((a, b) => b.total - a.total);
+      return {data, employees, columns};
     },
   }
 }

@@ -141,13 +141,11 @@ async def main(config):
                         await mysql_cursor.execute('select StartTime from tam.polllog order by StartTime desc')
                         
                     if mysql_cursor.rowcount:
-                        polls = await mysql_cursor.fetchall()
-                        # yuck
-                        #polls = [date + timedelta(hours=5) for date, in polls]
-                        polls = [date for date, in polls]
-                        latest_poll = polls[0]
-                        polls = [{'date': date} for date in polls]
+                        polls = [{'date': date} for date, in await mysql_cursor.fetchall()]
                         await mongo_db.polls.insert_many(polls)
+                        # yuck
+                        latest_poll = await mongo_db.polls.find_one({}, sort=[('date', pymongo.DESCENDING)])
+                        latest_poll = latest_poll and latest_poll.get('date')
 
                     if latest_poll and (latest_sync is None or latest_poll > latest_sync):
                         break   

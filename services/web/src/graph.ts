@@ -1,6 +1,6 @@
 declare const GENERATE_MOCKING: boolean;
 import * as d3 from 'd3';
-import { Employee } from './models';
+import { Employee, GraphDataResponse } from './models';
 import { formatName } from './util';
 import * as Comlink from 'comlink';
 
@@ -20,29 +20,12 @@ const outerRadius = 200;
 
 const exclude = ['70', '67', '51', '74', '79', '57', '80'];
 
-// const x = d3.scaleBand().range([0, 2 * Math.PI]).align(0);
-// const y = d3.scaleLinear()
-//     .range([innerRadius * innerRadius, outerRadius * outerRadius]);
-
 const margin = {top: 80, bottom: 40, left: 40, right: 200};
-const x = d3.scaleBand().range([margin.left, width - margin.right]);
-const y = d3.scaleLinear().range([height - margin.bottom, margin.top]);
-const bottomAxis = d3.axisBottom(x)
-  .tickFormat(d => {
-    const v = parseFloat(d) / 2;
-    const k = Math.floor(v);
-    return `${k}:${('0' + ((v - k) * 60)).slice(-2)}`;
-  });
-
 
 const colors = d3.schemePaired.slice(0, 10).filter((_, i) => i % 2 == 1);
 const colorScale = d3.scaleOrdinal<string>()
   .range(colors)
   .domain(colors.map((_, i) => i.toString()));
-
-svg.append('g').classed('data', true);
-svg.append('g').classed('axis bottom', true);
-svg.append('g').classed('legend', true);
 
 (async function () {
   // const url = new URL(`/data/graph`, location.origin);
@@ -60,21 +43,48 @@ svg.append('g').classed('legend', true);
     now = new Date();
   }
  
-  const content = await worker.getGraphData();
+  const content = await worker.getGraphData() as GraphDataResponse;
 
-  const columns = content['columns'];
+  round(content);
+})();
 
-  x.domain(columns);
+function round(
+  {columns, data, employees}: {
+    columns: string[],
+    data: {_id: string, total: number, buckets: {[key: string]: number}}[],
+    employees: Employee[],
+  }) {
 
-  bottomAxis.tickValues(columns.filter((_, i) => i % 4 == 0))
+  if (svg.select('g.axis.bottom').empty()) {
+    svg.append('g').classed('axis bottom', true);
+  }
+  if (svg.select('g.legend').empty()) {
+    svg.append('g').classed('legend', true);
+  }
+  if (svg.select('g.data').empty()) {
+    svg.append('g').classed('data', true);
+  }
 
-  svg.select('g.axis.bottom').call(bottomAxis).attr('transform', `translate(0, ${height - margin.bottom})`);
+  const x = d3.scaleBand()
+    .domain(columns)
+    .range([0, 2 * Math.PI])
+    .align(0)
 
-  let data = content['data'];
+  const y = d3.scaleLinear()
+      .domain([0, d3.max(data, d => d.total)])
+      .range([innerRadius * innerRadius, outerRadius * outerRadius]);
+  Object.assign(d => Math.sqrt(y(d)), y);
+
+  const arc = d3.arc()
+    .innerRadius(d => y(d[0]))
+    .outerRadius(d => y(d[1]))
+    .startAngle(d => x(d['data']['_id']))
+    .endAngle(d => x(d['data']['_id']) + x.bandwidth())
+    .padAngle(0.01)
+    .padRadius(innerRadius)
 
   let employeeIds: string[] = [];
   const employeeMap = {};
-  const employees = content['employees'] as Employee[];
   for (const empl of employees) {
     const employeeId = empl['id'];
     employeeIds.push(employeeId);
@@ -83,18 +93,75 @@ svg.append('g').classed('legend', true);
 
   // employeeIds = employeeIds.sort((a, b) => !exclude.includes(a) ? 1 : -1);
 
-  const stack = d3.stack().keys(employeeIds)
+  const stack = d3.stack()
+    .keys(employeeIds)
     .value((d, key) => d.buckets[key] || 0);
-  
-  data = data.sort((a, b) => b.total - a.total);
 
   const cumTotal = data.reduce((acc, {total}) => Math.max(acc, total), 0);
   y.domain([0, cumTotal]);
 
-  const series = stack(data).map(d => {
-    d.forEach((v: any) => v.key = d.key);
-    return d;
-  });
+  const series = stack(data as any[]).map(d => (d.forEach((v: any) => v.key = d.key), d));
+
+  svg.select('g.data').selectAll('g').data(series)
+    .join('g')
+    .attr('fill', (d: any) => colorScale(d.key))
+    .selectAll('path')
+    .data(d => d)
+    .join('path')
+    .attr('d', arc as any);
+}
+
+
+function flat(
+  {columns, data, employees}: {
+    columns: string[],
+    data: {_id: string, total: number, buckets: {[key: string]: number}}[],
+    employees: Employee[],
+  }) {
+
+  if (svg.select('g.axis.bottom').empty()) {
+    svg.append('g').classed('axis bottom', true);
+  }
+  if (svg.select('g.legend').empty()) {
+    svg.append('g').classed('legend', true);
+  }
+  if (svg.select('g.data').empty()) {
+    svg.append('g').classed('data', true);
+  }
+
+  const x = d3.scaleBand().range([margin.left, width - margin.right]);
+  const y = d3.scaleLinear().range([height - margin.bottom, margin.top]);
+  const bottomAxis = d3.axisBottom(x)
+    .tickFormat(d => {
+      const v = parseFloat(d) / 2;
+      const k = Math.floor(v);
+      return `${k}:${('0' + ((v - k) * 60)).slice(-2)}`;
+    });
+
+  x.domain(columns);
+
+  bottomAxis.tickValues(columns.filter((_, i) => i % 4 == 0))
+
+  svg.select('g.axis.bottom').call(bottomAxis).attr('transform', `translate(0, ${height - margin.bottom})`);
+
+  let employeeIds: string[] = [];
+  const employeeMap = {};
+  for (const empl of employees) {
+    const employeeId = empl['id'];
+    employeeIds.push(employeeId);
+    employeeMap[employeeId] = empl;
+  }
+
+  // employeeIds = employeeIds.sort((a, b) => !exclude.includes(a) ? 1 : -1);
+
+  const stack = d3.stack()
+    .keys(employeeIds)
+    .value((d, key) => d.buckets[key] || 0);
+
+  const cumTotal = data.reduce((acc, {total}) => Math.max(acc, total), 0);
+  y.domain([0, cumTotal]);
+
+  const series = stack(data as any[]).map(d => (d.forEach((v: any) => v.key = d.key), d));
 
   function draw() {
     svg.select('g.data').selectAll('g').data(series)
@@ -120,6 +187,7 @@ svg.append('g').classed('legend', true);
   draw();
 
   svg.select('g.legend')
+    .on('mouseleave', d => draw())
     .call(s => s.append('rect').attr('width', 200).attr('height', employees.length * 20).attr('fill', 'transparent'))
     .attr('transform', `translate(${width - 200},${margin.top})`)
     .selectAll<SVGGraphicsElement, Employee>('g')
@@ -159,7 +227,6 @@ svg.append('g').classed('legend', true);
           d3.select(this).attr('y', dy).attr('height', h).attr('x', dx);
         })
         .attr('width', x.bandwidth())
-    })
-  svg.select('g.legend').on('mouseleave', d => draw());
-})();
+    });
+};
 // d => Math.sqrt(y(d)), y
