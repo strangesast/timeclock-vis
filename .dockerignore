@@ -1,6 +1,7 @@
 .git
-Dockerfile
+**/Dockerfile
 docker-compose.yml
-node_modules
+**/env/
+**/node_modules
 **/__pycache__
 **/*.pyc

@@ -10,8 +10,8 @@ from datetime import datetime
 from bson.json_util import dumps
 from aiojobs.aiohttp import setup, spawn
 
-from services.util import get_mongo_db
-from services.api.graph import get_graph_data
+from util import get_mongo_db
+from graph import get_graph_data
 
 EMPLOYEE_IDS = ['50', '53', '71', '61', '82', '73', '55', '72', '66', '62', '69',
         '67', '80', '79', '57', '51', '70', '74', '54', '56', '58', '59', '64', '65']

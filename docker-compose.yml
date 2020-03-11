@@ -1,29 +1,31 @@
 version: '3.7'
 services:
-  web:
+  base:
+    image: strangesast/timeclock-vis_base
     build:
       context: .
-      dockerfile: docker/web/Dockerfile
-    image: strangesast/timeclock-vis_web
+      dockerfile: docker/base/Dockerfile
+  client:
+    build:
+      context: .
+      dockerfile: docker/client/Dockerfile
+    image: strangesast/timeclock-vis_client
     ports:
       - '80:80'
-    depends_on:
-      - api
-      - ws
     restart: always
   api:
     build:
       context: .
       dockerfile: docker/api/Dockerfile
     image: strangesast/timeclock-vis_api
-    depends_on:
-      - mongo
     environment:
       - env=production
       - MONGO_HOST=mongo
       - MONGO_PORT=27017
     volumes:
       - ./config.ini:/app/config.ini
+    depends_on:
+      - mongo
     restart: always
   daemon:
     image: strangesast/timeclock-vis_daemon
@@ -61,10 +63,5 @@ services:
     ports:
       - '27017:27017'
     restart: always
-#    environment:
-#      MONGO_INITDB_ROOT_USERNAME: root
-#      MONGO_INITDB_ROOT_PASSWORD: password
 #    volumes:
-#      - ./docker/mongo/init.sh:/docker-entrypoint-initdb.d/init.sh
 #      - ./data:/data/db
-

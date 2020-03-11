@@ -11,7 +11,7 @@ from aiohttp import web, WSCloseCode
 from pymongo.cursor import CursorType
 from bson.json_util import dumps
 
-from services.util import get_mongo_db
+from util import get_mongo_db
 
 
 async def websocket_handler(request):

@@ -4,7 +4,7 @@ import configparser
 from pprint import pprint
 from datetime import datetime
 
-from services.util import get_mongo_db
+from util import get_mongo_db
 
 PIPELINE = [
     {'$unwind': {'path': '$components', 'preserveNullAndEmptyArrays': True}},
