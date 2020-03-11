@@ -35,6 +35,11 @@ async function main() {
 }
 
 async function byTime(date: Date) {
+  const zoom = d3.zoom()
+    .scaleExtent([.4, 100])
+    .on('zoom', zoomed)
+    .filter(() => d3.event.ctrlKey);
+
   const margin = {top: 80, left: 10, right: 10, bottom: 10};
   const {innerWidth: width, innerHeight: height} = window;
 
@@ -55,7 +60,11 @@ async function byTime(date: Date) {
   const x0 = totalWidth / 2 - width / 2;
   const x1 = x0 + width;
   
-  const xScale = d3.scaleTime().range([x0, x1]).domain(initialDomain);
+  let xScale = d3.scaleTime().range([x0, x1]).domain(initialDomain);
+  let xScaleCopy = xScale.copy();
+
+  let topAxis = d3.axisTop(xScale).ticks(d3.timeHour.every(3));
+  let bottomAxis = d3.axisBottom(xScale).ticks(d3.timeHour.every(3))
 
   // set to whole svg width for axis
   const fullRange = [0, totalWidth];
@@ -64,9 +73,9 @@ async function byTime(date: Date) {
 
   const svg = body.select('svg');
 
-  drawTopAxis(svg, xScale, contentHeight - margin.bottom - margin.top - axisLabelHeight);
-  drawBottomAxis(svg, xScale, contentHeight - axisLabelHeight - margin.bottom);
-  drawDateAxis(svg, xScale);
+  drawTopAxis(svg, contentHeight - margin.bottom - margin.top - axisLabelHeight);
+  drawBottomAxis(svg, contentHeight - axisLabelHeight - margin.bottom);
+  drawDateAxis(svg);
 
   if (body.select('header').empty()) {
     body.append('header').append('button')
@@ -81,6 +90,9 @@ async function byTime(date: Date) {
     body.select('svg').append('g').classed('shifts', true);
   }
   svg.attr('width', totalWidth).attr('height', height);
+
+  svg.call(zoom)
+    .on('.zoom', () => console.log(d3.event))
 
   const redraw = new Subject();
   redraw.pipe(
@@ -150,6 +162,31 @@ async function byTime(date: Date) {
       )
   }
 
+  function zoomed () {
+    xScale = d3.event.transform.rescaleX(xScaleCopy);
+    const fullRange = [0, totalWidth];
+    const fullDomain = [xScale.invert(0), xScale.invert(totalWidth)];
+    xScale.range(fullRange).domain(fullDomain);
+
+    topAxis = topAxis.scale(xScale);
+    bottomAxis = bottomAxis.scale(xScale);
+
+    drawTopAxis(svg, contentHeight - margin.bottom - margin.top - axisLabelHeight);
+    drawBottomAxis(svg, contentHeight - axisLabelHeight - margin.bottom);
+    drawDateAxis(svg);
+
+    body.select('svg').select('g.shifts').selectAll<SVGGraphicsElement, Shift>('g.shift')
+      .each(updatePositions)
+      .call(s => s.select('g.text').attr('transform', d => `translate(${d.x},${-rowTextHeight})`))
+      .call(s => s.selectAll<SVGGraphicsElement, ShiftComponent>('g.component').data(d => d.components)
+        .attr('transform', d => `translate(${d.x},0)`)
+        .call(s => s.select('rect')
+          .attr('width', d => d.w)
+        )
+        .each(filterShiftComponentTimeVisibility)
+      )
+  }
+
   const onScroll = () => redraw.next([window.scrollX, window.innerWidth]);
   const onBeforeUnload = () => window.scrollTo(args);
 
@@ -167,38 +204,35 @@ async function byTime(date: Date) {
     window.removeEventListener('beforeunload', onBeforeUnload);
   };
 
-  function drawTopAxis(sel, scale, h) {
+  function drawTopAxis(sel, h) {
     if (sel.select('g.axis.top').empty()) {
       sel.append('g').classed('axis top', true);
     }
     return sel.select('g.axis.top')
       .attr('transform', `translate(0,${margin.top})`)
-      .call(d3.axisTop(scale).ticks(d3.timeHour.every(3)))
+      .call(topAxis)
       .call(s => s.select('path').remove())
-      .call(s => s.selectAll('.tick').select('line')
-        .attr('y2', h)
-      );
+      .call(s => s.selectAll('.tick').select('line').attr('y2', h));
   }
   
-  function drawBottomAxis(sel, scale, h) {
+  function drawBottomAxis(sel, h) {
     if (sel.select('g.axis.bottom').empty()) {
       sel.append('g').classed('axis bottom', true);
     }
   
     return sel.select('g.axis.bottom')
       .attr('transform', `translate(0,${h})`)
-      .call(d3.axisBottom(scale).ticks(d3.timeHour.every(3)))
+      .call(bottomAxis)
       .call(s => s.select('path').remove())
       .call(s => s.selectAll('.tick').select('line').remove());
   }
   
-  
-  function drawDateAxis(sel, scale) {
+  function drawDateAxis(sel) {
     if (sel.select('g.axis.date').empty()) {
       sel.append('g').classed('axis date', true);
     }
     const days = [];
-    const [minDate, maxDate] = scale.domain();
+    const [minDate, maxDate] = xScale.domain();
     let d = d3.timeDay.floor(minDate)
     while (d < maxDate) {
       days.push(d3.timeHour.offset(d, 12));
@@ -206,13 +240,13 @@ async function byTime(date: Date) {
     }
     sel.select('g.axis.date').attr('transform', `translate(0,${48})`).selectAll('g.label').data(days, d => d.toISOString().slice(0, 10)).join(
       enter => enter.append('g').classed('label', true)
-        .attr('transform', d => `translate(${scale(d)},0)`)
+        .attr('transform', d => `translate(${xScale(d)},0)`)
         .call(s => s.append('text')
           .attr('text-anchor', 'middle')
           .attr('alignment-baseline', 'middle')
           .text(d => formatDateWeekday(d))
         ),
-      update => update.attr('transform', d => `translate(${scale(d)},0)`),
+      update => update.attr('transform', d => `translate(${xScale(d)},0)`),
       exit => exit.remove(),
     );
   }
