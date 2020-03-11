@@ -27,6 +27,13 @@ const exclude = ['70', '67', '51', '74', '79', '57', '80'];
 const margin = {top: 80, bottom: 40, left: 40, right: 200};
 const x = d3.scaleBand().range([margin.left, width - margin.right]);
 const y = d3.scaleLinear().range([height - margin.bottom, margin.top]);
+const bottomAxis = d3.axisBottom(x)
+  .tickFormat(d => {
+    const v = parseFloat(d) / 2;
+    const k = Math.floor(v);
+    return `${k}:${('0' + ((v - k) * 60)).slice(-2)}`;
+  });
+
 
 const colors = d3.schemePaired.slice(0, 10).filter((_, i) => i % 2 == 1);
 const colorScale = d3.scaleOrdinal<string>()
@@ -59,7 +66,9 @@ svg.append('g').classed('legend', true);
 
   x.domain(columns);
 
-  svg.select('g.axis.bottom').call(d3.axisBottom(x)).attr('transform', `translate(0, ${height - margin.bottom})`);
+  bottomAxis.tickValues(columns.filter((_, i) => i % 4 == 0))
+
+  svg.select('g.axis.bottom').call(bottomAxis).attr('transform', `translate(0, ${height - margin.bottom})`);
 
   let data = content['data'];
 
