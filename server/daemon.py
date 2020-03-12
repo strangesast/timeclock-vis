@@ -21,6 +21,8 @@ import models
 from util import get_async_rpc_connection, get_mysql_db, get_mongo_db, EmployeeShiftColor
 from calculate_rows import recalculate
 
+tz = timezone('US/Eastern')
+
 
 async def init(mongo_db, mysql_db):
     col_names = await mongo_db.list_collection_names()
@@ -125,8 +127,6 @@ async def main(config):
             latest_sync = latest_sync and latest_sync.get('date')
 
             now = datetime.now()
-            logging.info(f'{latest_poll=}')
-            logging.info(f'{latest_sync=}')
             logging.info(f'{now=}')
             duration = 0 if latest_poll is None or latest_sync is None or latest_sync < latest_poll or (d := (latest_poll + interval - now).total_seconds()) < 0 else d
             logging.info(f'sleeping for {duration} seconds')
@@ -137,16 +137,19 @@ async def main(config):
                 async with mysql_client.cursor() as mysql_cursor:
                     await mysql_cursor.execute('ANALYZE TABLE tam.polllog');
                     if latest_poll:
-                        await mysql_cursor.execute('select StartTime from tam.polllog where StartTime > %s order by StartTime desc', (latest_poll,))
+                        await mysql_cursor.execute('select StartTime from tam.polllog where StartTime > %s order by StartTime desc', (latest_poll.astimezone(tz).replace(tzinfo=None),))
                     else:
                         await mysql_cursor.execute('select StartTime from tam.polllog order by StartTime desc')
                         
                     if mysql_cursor.rowcount:
-                        polls = [{'date': date} for date, in await mysql_cursor.fetchall()]
+                        polls = [{'date': tz.localize(date)} for date, in await mysql_cursor.fetchall()]
                         await mongo_db.polls.insert_many(polls)
                         # yuck
-                        latest_poll = await mongo_db.polls.find_one({}, sort=[('date', pymongo.DESCENDING)])
-                        latest_poll = latest_poll and latest_poll.get('date')
+
+                    latest_poll = await mongo_db.polls.find_one({}, sort=[('date', pymongo.DESCENDING)])
+                    latest_poll = latest_poll and latest_poll.get('date')
+                    logging.info(f'{latest_poll=}')
+                    logging.info(f'{latest_sync=}')
 
                     if latest_poll and (latest_sync is None or latest_poll > latest_sync):
                         break   
@@ -287,7 +290,6 @@ async def update_shifts(proxy, employee_ids, min_date, end_date = datetime.now()
 
 def parse_timecard(timecard):
     employee_id, timecards = str(timecard['EmployeeId']), timecard['Timecards']
-    tz = timezone('US/Eastern')
     for item in timecards:
         punches = []
         obj = {'punches': punches, 'employee': employee_id}
