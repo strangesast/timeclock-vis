@@ -126,8 +126,12 @@ async def main(config):
             latest_sync = await mongo_db.sync_history.find_one({}, sort=[('date', pymongo.DESCENDING)])
             latest_sync = latest_sync and latest_sync.get('date')
 
-            now = datetime.now()
+            now = datetime.utcnow()
+
             logging.info(f'{now=}')
+            logging.info(f'{latest_poll=}')
+            logging.info(f'{latest_sync=}')
+
             timeout_duration = 0 if (
                     latest_poll is None or
                     latest_sync is None or
@@ -136,8 +140,6 @@ async def main(config):
                     ) else d
             logging.info(f'sleeping for {timeout_duration} seconds')
             await asyncio.sleep(timeout_duration)
-
-            latest_sync = latest_sync - timedelta(hours=4)
 
             # update polls, wait for next poll update after interval
             while True:
@@ -149,10 +151,12 @@ async def main(config):
                         await mysql_cursor.execute('select StartTime from tam.polllog order by StartTime desc')
                         
                     if mysql_cursor.rowcount:
-                        polls = [{'date': tz.localize(date).replace(tzinfo=None)} for date, in await mysql_cursor.fetchall()]
+                        polls = [{'date': tz.localize(date).astimezone(pytz.UTC).replace(tzinfo=None)} for date, in await mysql_cursor.fetchall()]
                         latest_poll = polls[0]['date']
                         await mongo_db.polls.insert_many(polls)
 
+                    now = datetime.utcnow()
+                    logging.info(f'{now=}')
                     logging.info(f'{latest_poll=}')
                     logging.info(f'{latest_sync=}')
 
@@ -163,12 +167,14 @@ async def main(config):
                 logging.info(f'sleeping for {buf} seconds')
                 await asyncio.sleep(buf)
 
-            now = datetime.now()
-            min_date = min(get_sunday(now), get_sunday(latest_sync)) if latest_sync else get_sunday(now - timedelta(days=365))
+            now = datetime.utcnow()
+            min_date = get_sunday((min(now, latest_sync) if latest_sync else (now - timedelta(days=365))).astimezone(tz)).replace(tzinfo=None)
+            #min_date = min(get_sunday(now.astimezone(tz)), get_sunday(latest_sync)) if latest_sync else get_sunday(now - timedelta(days=365))
             logging.info(f'{min_date=}')
 
             await update(mongo_db, amg_rpc_proxy, min_date, now)
             await recalculate(mongo_db, min_date)
+            print(f'inserting... {now}')
             await mongo_db.sync_history.insert_one({'date': now})
 
     except asyncio.CancelledError:
