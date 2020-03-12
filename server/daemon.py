@@ -5,14 +5,14 @@
 # init.py
 import os
 import sys
+import pytz
 import pymongo
 import logging
 import asyncio
 import aiomysql
 import configparser
-from pprint import pprint
+from typing import List
 from datetime import datetime, timedelta
-from pytz import timezone
 from pymongo.errors import BulkWriteError
 from pymongo import ReplaceOne
 from bson.codec_options import CodecOptions, TypeRegistry
@@ -21,7 +21,7 @@ import models
 from util import get_async_rpc_connection, get_mysql_db, get_mongo_db, EmployeeShiftColor
 from calculate_rows import recalculate
 
-tz = timezone('US/Eastern')
+tz = pytz.timezone('US/Eastern')
 
 
 async def init(mongo_db, mysql_db):
@@ -128,9 +128,16 @@ async def main(config):
 
             now = datetime.now()
             logging.info(f'{now=}')
-            duration = 0 if latest_poll is None or latest_sync is None or latest_sync < latest_poll or (d := (latest_poll + interval - now).total_seconds()) < 0 else d
-            logging.info(f'sleeping for {duration} seconds')
-            await asyncio.sleep(duration)
+            timeout_duration = 0 if (
+                    latest_poll is None or
+                    latest_sync is None or
+                    latest_sync < latest_poll or
+                    (d := (latest_poll + interval - now).total_seconds()) < 0
+                    ) else d
+            logging.info(f'sleeping for {timeout_duration} seconds')
+            await asyncio.sleep(timeout_duration)
+
+            latest_sync = latest_sync - timedelta(hours=4)
 
             # update polls, wait for next poll update after interval
             while True:
@@ -142,12 +149,10 @@ async def main(config):
                         await mysql_cursor.execute('select StartTime from tam.polllog order by StartTime desc')
                         
                     if mysql_cursor.rowcount:
-                        polls = [{'date': tz.localize(date)} for date, in await mysql_cursor.fetchall()]
+                        polls = [{'date': tz.localize(date).replace(tzinfo=None)} for date, in await mysql_cursor.fetchall()]
+                        latest_poll = polls[0]['date']
                         await mongo_db.polls.insert_many(polls)
-                        # yuck
 
-                    latest_poll = await mongo_db.polls.find_one({}, sort=[('date', pymongo.DESCENDING)])
-                    latest_poll = latest_poll and latest_poll.get('date')
                     logging.info(f'{latest_poll=}')
                     logging.info(f'{latest_sync=}')
 
@@ -193,55 +198,75 @@ async def update(mongo_db, proxy, min_date: datetime, now):
         logging.info(f'{min_date} - {max_date}')
     
         employee_timecards = await proxy.GetTimecards(employee_ids, min_date, max_date, False)
-        timecards = [item for tc in employee_timecards for item in parse_timecard(tc)]
     
-        for component in timecards:
-            employee_id, start, end = [component[k] for k in ['employee', 'start', 'end']]
+        for employee_id, components in parse_timecard(employee_timecards):
+            for component in components:
+                start, end = component['start'], component['end']
 
-            if start is None:
-                continue
+                if start is None:
+                    continue
 
-            # existing component, perhaps it has been finished
-            doc = await mongo_db.components.find_one({'employee': employee_id, 'start': start})
-            if doc is None:
-                result = await mongo_db.components.insert_one(component)
-                component_id = result.inserted_id
-            else:
-                component_id = doc['_id']
-                await mongo_db.components.update_one({'_id': component_id}, {'$set': component})
-                shift_id = doc['shift']
-                shift = await mongo_db.shifts.find_one_and_update({'_id': shift_id}, {'$set': {'end': end}})
-                continue
+                # existing component, perhaps it has been finished
+                existing_component = await mongo_db.components.find_one({'employee': employee_id, 'start': start})
+                
+                if existing_component is not None:
+                    component_id = existing_component['_id']
+                    await mongo_db.components.update_one({'_id': component_id}, {'$set': component})
 
-            component['_id'] = component_id
+                    parent_shift = await mongo_db.shifts.find_one({'components': component_id});
+                    if parent_shift is None:
+                        raise Exception('missing parent_shift for component')
 
-            doc = await shifts_col.find_one({
-                'employee': employee_id,
-                'end': {'$lte': start, '$gt': start - timedelta(hours=4)}
-                }, sort=[('end', -1)])
+                    peer_components = await mongo_db.components.find({'_id': {'$in': parent_shift['components']}}).sort([('start', pymongo.ASCENDING)]).to_list(None);
 
-            duration = end - start if end is not None else timedelta()
-            shift_state = 'incomplete' if end is None else 'complete'
+                    if len(peer_components) != len(parent_shift['components']):
+                        raise Exception('missing component for parent_shift')
 
-            if doc is None:
-                result = await shifts_col.insert_one({'employee': employee_id,
-                    'components': [component_id], 'start': start, 'end': end,
-                    'duration': duration, 'state': shift_state })
-                await mongo_db.components.update_one({'_id': component_id}, {'$set': {'shift': result.inserted_id}})
-            else:
-                shift_id = doc['_id']
-                if duration is not None:
-                    duration += timedelta(microseconds=doc['duration'])
+                    start = peer_components[0]['start']
+                    end = peer_components[-1]['end']
+                    duration = get_duration(peer_components)
+                    shift_state = models.ShiftState.Incomplete if end is None else models.ShiftState.Complete
+                    await shifts_col.find_one_and_update({'_id': parent_shift['_id']},
+                            {'$set': {'start': start, 'end': end, 'duration': duration, 'state': shift_state}})
                 else:
-                    duration = timedelta()
-                await shifts_col.update_one({'_id': shift_id}, {
-                    '$push': {'components': component_id},
-                    '$set': {
-                        'end': end,
-                        'state': shift_state,
-                        'duration': duration,
-                    }})
-                await mongo_db.components.update_one({'_id': component_id}, {'$set': {'shift': shift_id}})
+                    result = await mongo_db.components.insert_one(component)
+                    component_id = result.inserted_id
+
+                    parent_shift = await shifts_col.find_one({
+                        'employee': employee_id,
+                        'end': {'$lte': start, '$gt': start - timedelta(hours=4)}
+                        }, sort=[('end', -1)])
+
+                    shift_state = models.ShiftState.Incomplete if end is None else models.ShiftState.Complete
+
+                    if parent_shift is None:
+                        duration = end - start if end is not None else timedelta()
+                        result = await shifts_col.insert_one({'employee': employee_id,
+                            'components': [component_id], 'start': start, 'end': end,
+                            'duration': duration, 'state': shift_state })
+                    else:
+                        shift_id = parent_shift['_id']
+
+                        peer_components = await mongo_db.components.find({'_id': {'$in': parent_shift['components']}}).sort([('start', pymongo.ASCENDING)]).to_list(None);
+    
+                        if len(peer_components) != len(parent_shift['components']):
+                            raise Exception('missing component for parent_shift')
+
+                        peer_components.append(component)
+                        peer_components.sort(key=lambda c: c['start'])
+    
+                        start = peer_components[0]['start']
+                        end = peer_components[-1]['end']
+                        duration = get_duration(peer_components)
+
+                        await shifts_col.update_one({'_id': shift_id}, {
+                            '$push': {'components': component_id},
+                            '$set': {
+                                'end': end,
+                                'start': start,
+                                'state': shift_state,
+                                'duration': duration,
+                            }})
 
         min_date = max_date
 
@@ -288,21 +313,23 @@ async def update_shifts(proxy, employee_ids, min_date, end_date = datetime.now()
         min_date = max_date
 
 
-def parse_timecard(timecard):
-    employee_id, timecards = str(timecard['EmployeeId']), timecard['Timecards']
-    for item in timecards:
-        punches = []
-        obj = {'punches': punches, 'employee': employee_id}
-        for k0, k1 in [('date', 'Date'), ('isManual', 'IsManual'), ('hours', 'Reg')]:
-            obj[k0] = item.get(k1)
-        for k0, k1 in [('start', 'StartPunch'), ('end', 'StopPunch')]:
-            if (p := item.get(k1)):
-                obj[k0] = tz.localize(p['OriginalDate'])
-                punches.append(p['Id'])
-            else:
-                obj[k0] = None
-        # this breaks if start time was amended
-        yield obj
+def parse_timecard(timecards):
+    for timecard in timecards:
+        employee_id, items = str(timecard['EmployeeId']), timecard['Timecards']
+        def it():
+            for item in items:
+                punches = []
+                obj = {'punches': punches, 'employee': employee_id}
+                for k0, k1 in [('date', 'Date'), ('isManual', 'IsManual'), ('hours', 'Reg')]:
+                    obj[k0] = item.get(k1)
+                for k0, k1 in [('start', 'StartPunch'), ('end', 'StopPunch')]:
+                    if (p := item.get(k1)):
+                        obj[k0] = tz.localize(p['OriginalDate']).replace(tzinfo=pytz.UTC).replace(tzinfo=None)
+                        punches.append(p['Id'])
+                    else:
+                        obj[k0] = None
+                yield obj
+        yield employee_id, it()
 
 
 async def update_shift_stats(db):
@@ -361,6 +388,17 @@ async def update_shift_stats(db):
     # add stats for each employee
     async for doc in db.shifts.aggregate(pipeline):
         pass
+
+
+def get_duration(components: List[models.ShiftComponent]) -> timedelta:
+    '''
+    if all start & end not None, add deltas up
+    '''
+    duration = timedelta()
+    if all(arr := [t for c in components for t in (c['start'], c['end'])]):
+        for a, b in zip(arr[0::2], arr[1::2]):
+            duration += b - a
+    return duration
 
 
 def timedelta_encoder(value):
