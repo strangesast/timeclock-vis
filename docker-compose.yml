@@ -13,7 +13,7 @@ services:
     build:
       context: .
       dockerfile: docker/server/Dockerfile
-    entrypoint: start-api.sh
+    entrypoint: /app/start-api.sh
     environment:
       - env=production
       - MONGO_HOST=mongo
@@ -28,7 +28,7 @@ services:
     build:
       context: .
       dockerfile: docker/server/Dockerfile
-    entrypoint: start-daemon.sh
+    entrypoint: /app/start-daemon.sh
     depends_on:
       - mongo
     environment:
@@ -47,7 +47,7 @@ services:
     build:
       context: .
       dockerfile: docker/server/Dockerfile
-    entrypoint: start-ws.sh
+    entrypoint: /app/start-ws.sh
     depends_on:
       - mongo
     environment:
