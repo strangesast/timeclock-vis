@@ -243,7 +243,7 @@ function byTime([minDate, maxDate], now = new Date()) {
   function updatePositions(shift: Shift) {
     for (const comp of shift.components) {
       const index = comp.type == ShiftComponentType.Projected ? 1 : 0;
-      comp.fill = d3.color(employeeColorScale(shift.employee)[index]);
+      comp.fill = d3.color(employeeColorScale(shift.employeeColor.toString())[index]);
       comp.x = xScale(comp.start);
       comp.w = Math.max(xScale(comp.end) - comp.x, 0);
     }
@@ -493,7 +493,7 @@ function byEmployee(employee: Employee, centerDate: Date) {
     calculateNorms(shift);
     for (const comp of shift.components) {
       const index = comp.type == ShiftComponentType.Projected ? 1 : 0;
-      comp.fill = d3.color(employeeColorScale(shift.employee)[index]);
+      comp.fill = d3.color(employeeColorScale(shift.employeeColor.toString())[index]);
       comp.x = xScale(comp.startNorm);
       comp.w = Math.max(xScale(comp.endNorm) - comp.x, 0);
     }
