@@ -1,10 +1,5 @@
 version: '3.7'
 services:
-  base:
-    image: strangesast/timeclock-vis_base
-    build:
-      context: .
-      dockerfile: docker/base/Dockerfile
   client:
     build:
       context: .
@@ -14,10 +9,11 @@ services:
       - '80:80'
     restart: always
   api:
+    image: strangesast/timeclock-vis_server
     build:
       context: .
-      dockerfile: docker/api/Dockerfile
-    image: strangesast/timeclock-vis_api
+      dockerfile: docker/server/Dockerfile
+    entrypoint: start-api.sh
     environment:
       - env=production
       - MONGO_HOST=mongo
@@ -28,10 +24,11 @@ services:
       - mongo
     restart: always
   daemon:
-    image: strangesast/timeclock-vis_daemon
+    image: strangesast/timeclock-vis_server
     build:
       context: .
-      dockerfile: docker/daemon/Dockerfile
+      dockerfile: docker/server/Dockerfile
+    entrypoint: start-daemon.sh
     depends_on:
       - mongo
     environment:
@@ -46,10 +43,11 @@ services:
       - ./config.ini:/app/config.ini
     restart: always
   ws:
-    image: strangesast/timeclock-vis_ws
+    image: strangesast/timeclock-vis_server
     build:
       context: .
-      dockerfile: docker/ws/Dockerfile
+      dockerfile: docker/server/Dockerfile
+    entrypoint: start-ws.sh
     depends_on:
       - mongo
     environment:
