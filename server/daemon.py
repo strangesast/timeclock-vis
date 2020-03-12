@@ -330,7 +330,7 @@ def parse_timecard(timecards):
                     obj[k0] = item.get(k1)
                 for k0, k1 in [('start', 'StartPunch'), ('end', 'StopPunch')]:
                     if (p := item.get(k1)):
-                        obj[k0] = tz.localize(p['OriginalDate']).replace(tzinfo=pytz.UTC).replace(tzinfo=None)
+                        obj[k0] = tz.localize(p['OriginalDate'])
                         punches.append(p['Id'])
                     else:
                         obj[k0] = None
