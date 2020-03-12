@@ -2,7 +2,7 @@ import * as d3 from 'd3';
 import { Observable, BehaviorSubject, timer } from 'rxjs';
 import { switchMap, filter, map, scan, startWith, audit, auditTime, throttleTime } from 'rxjs/operators';
 import { formatName, formatDuration, formatDateWeekday, formatTime, inFieldOfView, throttle, employeeColorScale, debounce } from './util';
-import { ShiftState, Shift, Employee, ShiftComponent, ShiftComponentType, EmployeeID, TranslateExtent } from './models';
+import { ShiftState, Shift, Employee, EmployeeShiftColor, ShiftComponent, ShiftComponentType, EmployeeID, TranslateExtent } from './models';
 import * as Comlink from 'comlink';
 
 declare const GENERATE_MOCKING: boolean;
@@ -695,8 +695,8 @@ function drawShift(sel, bandwidth, employees) {
 }
 
 const arc = d3.arc();
-function drawMiniPie(sel, frac: number, employeeId: string, radius = 10) {
-  const c = employeeColorScale(employeeId);
+function drawMiniPie(sel, frac: number, employeeColor: EmployeeShiftColor, radius = 10) {
+  const c = employeeColorScale(employeeColor.toString());
   const endAngle = 2 * Math.PI * Math.min(Math.max(frac, 0), 1);
   const startAngle = 0;
   return sel.append('g')
