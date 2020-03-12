@@ -330,7 +330,7 @@ def parse_timecard(timecards):
                     obj[k0] = item.get(k1)
                 for k0, k1 in [('start', 'StartPunch'), ('end', 'StopPunch')]:
                     if (p := item.get(k1)):
-                        obj[k0] = tz.localize(p['OriginalDate'])
+                        obj[k0] = tz.localize(p['OriginalDate']).astimezone(pytz.UTC).replace(tzinfo=None)
                         punches.append(p['Id'])
                     else:
                         obj[k0] = None
@@ -383,7 +383,7 @@ async def update_shift_stats(db):
           'count': {'$toInt': '$count'},
           'start': {'$dateFromParts': {'year': 2000, 'month': 1, 'day': 1, 'millisecond': {'$toInt': '$start'}}},
           'end': {'$dateFromParts': {'year': 2000, 'month': 1, 'day': 1, 'millisecond': {'$toInt': '$end'}}},
-          'calculatedOn': now + timedelta(hours=5), # irritating
+          'calculatedOn': now,
       }},
       {'$project': {'stats': '$$ROOT'}},
       {'$project': {'stats': 1, 'id': '$_id', '_id': 0}},
