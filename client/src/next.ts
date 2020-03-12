@@ -657,7 +657,7 @@ function drawShift(sel, bandwidth, employees) {
           const dx = (this.previousSibling as SVGGraphicsElement).getBBox().width + 4;
           d3.select(this)
             .attr('transform', `translate(${dx},0)`)
-            .call(drawMiniPie, d.duration / d.expectedDuration, d.employee);
+            .call(drawMiniPie, d.duration / d.expectedDuration, d.employeeColor);
         })
         .call(s => s.append('text')
           .attr('x', 24)
