@@ -5,6 +5,7 @@ An app to view current and historical shift stats interactively.
 - [x] Display who & when
 - [x] Each person view
 - [x] Use real data
-- [ ] Fix broken daemon
+- [?] Fix broken daemon
 - [ ] Angularify into web components
 - [ ] Add testing
+- [ ] ML
