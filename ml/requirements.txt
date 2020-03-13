@@ -21,15 +21,18 @@ language-selector==0.1
 lxml==4.2.1
 Markdown==3.2.1
 matplotlib==3.2.0
+motor==2.1.0
 netifaces==0.10.4
 numexpr==2.6.4
 numpy==1.18.1
 olefile==0.45.1
 pandas==0.22.0
+pathlib2==2.3.5
 Pillow==5.1.0
 pkg-resources==0.0.0
 protobuf==3.11.3
 pygobject==3.26.1
+pymongo==3.10.1
 pyparsing==2.2.0
 python-apt==1.6.5+ubuntu0.2
 python-dateutil==2.6.1
@@ -44,6 +47,7 @@ ssh-import-id==5.7
 tables==3.4.2
 tensorboard==1.14.0
 tensorflow==1.14.0
+tensorflow-docs==0.0.0
 tensorflow-estimator==1.14.0
 termcolor==1.1.0
 ufw==0.36
