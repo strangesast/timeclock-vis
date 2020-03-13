@@ -26,8 +26,8 @@ dataset = dataset.drop('end', 1)
 #dataset = dataset.drop('employee', 1)
 #dataset = dataset.drop('dayOfWeek', 1)
 dataset = dataset.drop('endHour', 1)
-dataset = dataset.drop('startHour', 1)
-dataset = dataset.drop('weekHours', 1)
+#dataset = dataset.drop('startHour', 1)
+#dataset = dataset.drop('weekHours', 1)
 #dataset = dataset.drop('duration', 1)
 
 

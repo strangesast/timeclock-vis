@@ -144,7 +144,7 @@ async def main(config):
             # update polls, wait for next poll update after interval
             while True:
                 async with mysql_client.cursor() as mysql_cursor:
-                    await mysql_cursor.execute('ANALYZE TABLE tam.polllog');
+                    #await mysql_cursor.execute('ANALYZE TABLE tam.polllog');
                     if latest_poll:
                         await mysql_cursor.execute('select StartTime from tam.polllog where StartTime > %s order by StartTime desc', (latest_poll.astimezone(tz).replace(tzinfo=None),))
                     else:
@@ -160,7 +160,8 @@ async def main(config):
                     logging.info(f'{latest_poll=}')
                     logging.info(f'{latest_sync=}')
 
-                    if latest_poll and (latest_sync is None or latest_poll > latest_sync):
+                    #if latest_poll and (latest_sync is None or latest_poll > latest_sync):
+                    if latest_poll and (latest_sync is None or latest_poll - latest_sync > -timedelta(minutes=5)):
                         break   
 
                 # if no new poll, wait 1 minute, check for poll again
@@ -187,7 +188,7 @@ async def main(config):
         mongo_client.close()
 
 
-async def update(mongo_db, proxy, min_date: datetime, now):
+async def update(mongo_db, proxy, min_date: datetime, now: datetime):
     # useful if encoding strange types
     type_registry = TypeRegistry(fallback_encoder=timedelta_encoder)
     codec_options = CodecOptions(type_registry=type_registry)
@@ -196,7 +197,6 @@ async def update(mongo_db, proxy, min_date: datetime, now):
     employee_ids = [int(empl['id']) for empl in await mongo_db.employees.find({}).to_list(None)]
 
     logging.info('update')
-    now = datetime.now()
     interval = timedelta(days=14)
 
     while min_date < now:
@@ -205,6 +205,7 @@ async def update(mongo_db, proxy, min_date: datetime, now):
     
         employee_timecards = await proxy.GetTimecards(employee_ids, min_date, max_date, False)
     
+        count = 0
         for employee_id, components in parse_timecard(employee_timecards):
             for component in components:
                 start, end = component['start'], component['end']
@@ -273,7 +274,8 @@ async def update(mongo_db, proxy, min_date: datetime, now):
                                 'state': shift_state,
                                 'duration': duration,
                             }})
-
+                count += 1
+        logging.info(f'{count=}')
         min_date = max_date
 
     values = []
