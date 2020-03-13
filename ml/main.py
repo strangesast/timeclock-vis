@@ -31,20 +31,21 @@ dataset = dataset.drop('endHour', 1)
 #dataset = dataset.drop('duration', 1)
 
 
+# shouldn't change anything
 #dataset['weekHours'] = 40 - dataset['weekHours']
 
 
-#dataset['dayOfWeek'] = dataset['dayOfWeek'].map({i+1: s for i, s in enumerate(['Sun', 'Mon', 'Tues', 'Wed', 'Thur', 'Fri'])})
+dataset['dayOfWeek'] = dataset['dayOfWeek'].map({i+1: s for i, s in enumerate(['Sun', 'Mon', 'Tues', 'Wed', 'Thur', 'Fri'])})
 dataset = pd.get_dummies(dataset, prefix='', prefix_sep='')
 
-#print(list(dataset))
-print(dataset.tail())
+print(list(dataset))
+#print(dataset.tail())
 
 train_dataset = dataset.sample(frac=0.8,random_state=0)
 test_dataset = dataset.drop(train_dataset.index)
 
-#sns.pairplot(train_dataset[['startHour', 'endHour', 'duration', 'weekHours']], diag_kind='kde')
-#plt.show()
+sns.pairplot(train_dataset[['startHour', 'duration', 'weekHours']], diag_kind='kde')
+plt.show()
 
 train_stats = train_dataset.describe()
 train_stats.pop('duration')
@@ -55,7 +56,11 @@ train_labels = train_dataset.pop('duration')
 test_labels = test_dataset.pop('duration')
 
 def norm(x):
-  return (x - train_stats['mean']) / train_stats['std']
+    return (x - train_stats['mean']) / train_stats['std']
+
+def denorm(y):
+    return y * train_stats['std'] + train_stats['mean']
+
 
 normed_train_data = norm(train_dataset)
 normed_test_data = norm(test_dataset)
@@ -79,14 +84,23 @@ def build_model():
 
 model = build_model()
 
-EPOCHS = 200
+EPOCHS = 1000
 
 # The patience parameter is the amount of epochs to check for improvement
 early_stop = keras.callbacks.EarlyStopping(monitor='val_loss', patience=10)
 
-early_history = model.fit(normed_train_data, train_labels,
-                    epochs=EPOCHS, validation_split = 0.2, verbose=0,
-                    callbacks=[early_stop, tfdocs.modeling.EpochDots()])
+history = model.fit(
+    normed_train_data,
+    train_labels,
+    epochs=EPOCHS,
+    validation_split = 0.2,
+    verbose=0,
+    callbacks=[early_stop, tfdocs.modeling.EpochDots()],
+)
+
+#hist = pd.DataFrame(history.history)
+#hist['epoch'] = history.epoch
+#print(hist.tail())
 
 example_batch = normed_train_data[:10]
 example_result = model.predict(example_batch)
@@ -94,18 +108,8 @@ print(example_result)
 
 #print(model.summary())
 
-#history = model.fit(
-#  normed_train_data, train_labels,
-#  epochs=EPOCHS, validation_split = 0.2, verbose=0,
-#  callbacks=[tfdocs.modeling.EpochDots()])
-#
-#hist = pd.DataFrame(history.history)
-#hist['epoch'] = history.epoch
-#print(hist.tail())
-
-
 #plotter = tfdocs.plots.HistoryPlotter(smoothing_std=2)
-#plotter.plot({'Basic': early_history}, metric = "mean_absolute_error")
+#plotter.plot({'Basic': history}, metric = "mean_absolute_error")
 #plt.ylim([0, 2])
 #plt.ylabel('MAE [startHour]')
 #
