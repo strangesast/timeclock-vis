@@ -1,5 +1,6 @@
 import * as Comlink from 'comlink';
 import { formatTime, addHours, inFieldOfView } from './util';
+import { Long, serialize, deserialize } from 'bson';
 import * as models from './models';
 
 
@@ -92,12 +93,19 @@ if (GENERATE_MOCKING) {
       const url = new URL(`/data/shifts`, location.origin);
       url.searchParams.set('minDate', minDate.toISOString());
       url.searchParams.set('maxDate', maxDate.toISOString());
-      const res = await fetch(url.toString());
+      const res = await fetch(url.toString(), {headers: {'Accept': 'application/bson'}});
       if (res.status < 200 || res.status >= 400) {
         throw new Error(`failed to fetch shifts: ${res.statusText}`);
       }
-      const content = await res.json();
-      interpretResponse(content);
+      let content;
+      if (res.headers.has('Content-Type') && res.headers.get('Content-Type') === 'application/bson') {
+        let buf = await res.arrayBuffer();
+        buf = new Uint8Array(buf)
+        content = deserialize(buf);
+      } else {
+        content = await res.json();
+        interpretResponse(content);
+      }
       return content;
     },
     async getShiftsByEmployeeInRange(employeeId: models.EmployeeID, [minDate, maxDate]: models.DateRange) {

@@ -45,7 +45,7 @@ const colorScale = d3.scaleOrdinal<string>()
  
   const content = await worker.getGraphData() as GraphDataResponse;
 
-  round(content);
+  flat(content);
 })();
 
 function round(

@@ -1,9 +1,11 @@
 import * as d3 from 'd3';
+import * as Comlink from 'comlink';
 import { Observable, BehaviorSubject, timer } from 'rxjs';
 import { switchMap, filter, map, scan, startWith, audit, auditTime, throttleTime } from 'rxjs/operators';
+
 import { formatName, formatDuration, formatDateWeekday, formatTime, inFieldOfView, throttle, employeeColorScale, debounce } from './util';
 import { ShiftState, Shift, Employee, EmployeeShiftColor, ShiftComponent, ShiftComponentType, EmployeeID, TranslateExtent } from './models';
-import * as Comlink from 'comlink';
+import * as constants from './constants';
 
 declare const GENERATE_MOCKING: boolean;
 const defaultExtent: [[number, number], [number, number]] = [[-Infinity,-Infinity], [Infinity, Infinity]];
@@ -18,17 +20,9 @@ let width,
   xScaleCopy,
   yScaleCopy;
 
-const bandwidth = 30;
-const rowTextHeight = 20;
-const step = 64;
 const worker = Comlink.wrap(new Worker('./data.worker.ts', { type: 'module' })) as any;
 const svg: d3.Selection<SVGElement, {}, HTMLElement, any> = d3.select('svg');
 const margin = {left: 10, right: 10, top: 80, bottom: 40};
-// svg.append('rect').classed('background', true).attr('height', '100%').attr('width', '100%');
-// svg.append('rect').classed('active', true).attr('height', '100%');
-// svg.append('g').classed('shifts', true).attr('transform', `translate(0,${margin.top})`);
-svg.select('g.shifts').attr('transform', `translate(0,${margin.top})`);
-
 
 updateSize();
 
@@ -69,19 +63,18 @@ function updateSize() {
 }
 
 function byTime([minDate, maxDate], now = new Date()) {
-  // setup
   svg.call(zoom = d3.zoom()
     .translateExtent(defaultExtent)
     .scaleExtent([.4, 100])
-    .on('start', zoomStarted)
-    .on('end', zoomEnded)
     .on('zoom', zoomed)
-  );
+  )
+  //  .on('wheel.zoom', () => {
+  //  console.log(d3.event)
+  //  d3.event.preventDefault();
+  //})
+
   xScale = d3.scaleTime().domain([minDate, maxDate]).range([margin.left, width - margin.right]);
   xScaleCopy = xScale.copy();
-
-  // yScale = d3.scaleOrdinal<number>();
-  // yScaleCopy = yScale.copy();
 
   topAxis = d3.axisTop(xScale);
   bottomAxis = d3.axisBottom(xScale);
@@ -103,14 +96,16 @@ function byTime([minDate, maxDate], now = new Date()) {
   }
 
   let lastDomain = [minDate, maxDate];
+  let employees, shifts, employeeIds;
   const updated = new BehaviorSubject(lastDomain);
 
   const o = updated.pipe(
-    map(arg => [arg]), // should not refresh when minDate > lastMinDate && maxDate < lastMaxDate
+    map(arg => [arg]),
   );
   const sub = fancy(o, [[minDate, maxDate]], worker.getShiftsInRange.bind(worker))
     .subscribe(result => {
-      const [{shifts, employeeIds, employees}, args] = result as any;
+      let args;
+      ([{shifts, employeeIds, employees}, args] = result as any);
       ([lastDomain] = args);
       draw(shifts, employeeIds, employees)
     });
@@ -118,16 +113,13 @@ function byTime([minDate, maxDate], now = new Date()) {
   drawAxis();
 
   let i = 0; // ugly hack for i > 0 redraws (due to zooming)
-  let lastOffsetY = 0,
-    currentOffset = 0,
-    dy = 0,
-    transform = d3.zoomIdentity;
+  const axisLabelHeight = 30;
 
 
   function draw(shifts: Shift[], employeeIds: EmployeeID[], employees: {[id: string]: Employee}) {
     // yScale.domain(employeeIds).range(Array.from(Array(employeeIds.length)).map((_, i) => i * step));
 
-    shifts.forEach(updatePositions);
+    shifts.forEach(shift => updatePositions(shift, employees));
 
     const t = d3.transition().duration(500);
 
@@ -139,8 +131,8 @@ function byTime([minDate, maxDate], now = new Date()) {
       svg.select('g.shifts').selectAll<SVGElement, Shift>('g.shift').data(shifts, d => d._id)
         .join(
           enter => enter.append('g')
-            .call(drawShift, bandwidth, employees)
-            .call(s => s.select('g.text').attr('transform', d => `translate(${d.x+4},${-rowTextHeight})`))
+            .call(drawShift, employees)
+            .call(s => s.select('g.text').attr('transform', d => `translate(${d.x},${-constants.ROW_TEXT_HEIGHT})`))
             .call(s => s.selectAll<SVGElement, ShiftComponent>('g.group')
               .attr('transform', d => `translate(${d.x},0)`)
               .call(s => s.select('rect')
@@ -154,11 +146,11 @@ function byTime([minDate, maxDate], now = new Date()) {
             .each(function (d) {
               d3.select(this)
                 .attr('opacity', 0)
-                .attr('transform', `translate(0,${d.y + 40+currentOffset})`)
+                .attr('transform', `translate(0,${d.y + 40})`)
                 .transition(t)
                 .delay(200)
                 .attr('opacity', 1)
-                .attr('transform', `translate(0,${d.y+currentOffset})`)
+                .attr('transform', `translate(0,${d.y})`)
             }),
           update => update
             .call(s => s.selectAll('g.group').data(d => d.components))
@@ -171,8 +163,8 @@ function byTime([minDate, maxDate], now = new Date()) {
                 const dx = text.node().getBBox().width + 4;
                 s.select('g.duration').attr('transform', `translate(${dx},0)`);
               }))
-              .call(s => s.select('g.text').attr('transform', (d: any) => `translate(${d.x+4},${-rowTextHeight})`))
-              .attr('transform', d => `translate(0,${d.y+currentOffset})`)
+              .call(s => s.select('g.text').attr('transform', (d: any) => `translate(${d.x},${-constants.ROW_TEXT_HEIGHT})`))
+              .attr('transform', d => `translate(0,${d.y})`)
               .selectAll<SVGElement, ShiftComponent>('g.group')
                 .attr('transform', d => `translate(${d.x},0)`)
                 .call(s => s.select('rect')
@@ -195,9 +187,9 @@ function byTime([minDate, maxDate], now = new Date()) {
       svg.select('g.shifts').selectAll<SVGElement, Shift>('g.shift').data(shifts, d => d._id)
         .join(
           enter => enter.append('g')
-            .call(drawShift, bandwidth, employees)
-            .attr('transform', d => `translate(0,${d.y+currentOffset})`)
-            .call(s => s.select('g.text').attr('transform', d => `translate(${d.x+4},${-rowTextHeight})`))
+            .call(drawShift, employees)
+            .attr('transform', d => `translate(0,${d.y})`)
+            .call(s => s.select('g.text').attr('transform', d => `translate(${d.x},${-constants.ROW_TEXT_HEIGHT})`))
             .call(s => s.selectAll<SVGElement, ShiftComponent>('g.group')
               .attr('transform', d => `translate(${d.x},0)`)
               .call(s => s.select('rect')
@@ -218,8 +210,8 @@ function byTime([minDate, maxDate], now = new Date()) {
                 const dx = text.node().getBBox().width + 4;
                 s.select('g.duration').attr('transform', `translate(${dx},0)`);
               }))
-              .call(s => s.select('g.text').attr('transform', (d: any) => `translate(${d.x+4},${-rowTextHeight})`))
-              .attr('transform', d => `translate(0,${d.y+currentOffset})`)
+              .call(s => s.select('g.text').attr('transform', (d: any) => `translate(${d.x},${-constants.ROW_TEXT_HEIGHT})`))
+              .attr('transform', d => `translate(0,${d.y})`)
               .selectAll<SVGElement, ShiftComponent>('g.group')
                 .attr('transform', d => `translate(${d.x},0)`)
                 .call(s => s.select('rect')
@@ -240,39 +232,21 @@ function byTime([minDate, maxDate], now = new Date()) {
     }
   };
 
-  function updatePositions(shift: Shift) {
+  function updatePositions(shift: Shift, employees: {[id: string]: Employee}) {
     for (const comp of shift.components) {
       const index = comp.type == ShiftComponentType.Projected ? 1 : 0;
-      comp.fill = d3.color(employeeColorScale(shift.employeeColor.toString())[index]);
+      comp.fill = d3.color(employeeColorScale(employees[shift.employee]['Color'].toString())[index]);
       comp.x = xScale(comp.start);
       comp.w = Math.max(xScale(comp.end) - comp.x, 0);
     }
-    shift.y = shift.row * step + rowTextHeight; //  yScale(shift.employee);
+    shift.y = shift.row * constants.ROW_STEP + margin.top + axisLabelHeight;
     const [a, b] = [shift.start, shift.end || now].map(xScale);
     shift.x = Math.min(Math.max(a, 0), b);
     return shift;
   }
 
-  function zoomStarted() {
-    const { sourceEvent } = d3.event;
-    if (sourceEvent == null) return;
-    lastOffsetY = sourceEvent.type == "touchstart" ? sourceEvent.touches[0].screenY : sourceEvent.offsetY;
-  }
-
-  function zoomEnded() {
-    currentOffset = dy;
-  }
-
   function zoomed() {
     xScale = d3.event.transform.rescaleX(xScaleCopy);
-
-    // manually compute the drag distance and create zoom transform
-    const { sourceEvent } = d3.event;
-    if (sourceEvent != null) {
-      const {type, touches, offsetY } = sourceEvent; 
-      dy = (type == 'touchmove' ? touches[0].screenY : offsetY) - lastOffsetY + currentOffset;
-    }
-
     topAxis = topAxis.scale(xScale);
     bottomAxis = bottomAxis.scale(xScale);
     drawAxis();
@@ -281,9 +255,9 @@ function byTime([minDate, maxDate], now = new Date()) {
     svg.select('#clip').select('rect.fg').attr('transform', `translate(${a},0)`).attr('width', b - a).attr('height', '100%');
     
     svg.select('g.shifts').selectAll<SVGElement, Shift>('g.shift')
-      .each(updatePositions)
-      .attr('transform', shift => `translate(0,${shift.y + dy})`)
-      .call(s => s.select('g.text').attr('transform', d => `translate(${d.x + 4},${-rowTextHeight})`))
+      .each(shift => updatePositions(shift, employees))
+      .attr('transform', shift => `translate(0,${shift.y})`)
+      .call(s => s.select('g.text').attr('transform', d => `translate(${d.x},${-constants.ROW_TEXT_HEIGHT})`))
       .call(s => s.selectAll<SVGElement, ShiftComponent>('g.group')
         .attr('transform', d => `translate(${d.x},0)`)
         .call(s => s.select('rect').attr('width', d => d.w))
@@ -304,19 +278,19 @@ function byTime([minDate, maxDate], now = new Date()) {
     const t = d3.transition().duration(200);
 
     svg.select('g.shifts').selectAll<SVGElement, Shift>('g.shift')
-      .each(updatePositions)
+      .each(shift => updatePositions(shift, employees))
       .call(s => s.transition(t)
         .call(s => s.select('g.text').each(function (d) {
           const s = d3.select(this);
           const text = s.select<SVGGraphicsElement>('text');
-          // .text((d: any) => formatName(employee));
           const dx = text.node().getBBox().width + 4;
           s.select('g.duration').attr('transform', `translate(${dx},0)`);
         }))
         .call(s => s.select('g.text')
-          .attr('transform', (d: any) => `translate(${d.x+4},${-rowTextHeight})`)
+          .attr('transform', (d: any) =>
+            `translate(${d.x},${-constants.ROW_TEXT_HEIGHT})`)
         )
-        .attr('transform', d => `translate(0,${d.y+currentOffset})`)
+        .attr('transform', d => `translate(0,${d.y})`)
         .selectAll<SVGElement, ShiftComponent>('g.group')
           .attr('transform', d => `translate(${d.x},0)`)
           .call(s => s.select('rect')
@@ -355,6 +329,7 @@ function byEmployee(employee: Employee, centerDate: Date) {
   xScaleCopy = xScale.copy();
 
   let lastDomain = [minDate, maxDate];
+  let employees, shifts, employeeIds;
   const updated = new BehaviorSubject(lastDomain);
 
   const sub = fancy(
@@ -362,7 +337,8 @@ function byEmployee(employee: Employee, centerDate: Date) {
     [employeeId, [minDate, maxDate]],
     worker.getShiftsByEmployeeInRange.bind(worker)
   ).subscribe(result => {
-    const [{shifts, employees, employeeIds}, args] = result as any;
+    let args;
+    ([{shifts, employees, employeeIds}, args] = result as any);
     lastDomain = args[1];
     const employee = employees[employeeIds[0]]; // uh
     draw(shifts, employee);
@@ -377,8 +353,8 @@ function byEmployee(employee: Employee, centerDate: Date) {
 
   svg.call(zoom = d3.zoom()
       .scaleExtent([1, 100])
-      .on('start', zoomStarted)
-      .on('end', zoomEnded)
+//       .on('start', zoomStarted)
+//       .on('end', zoomEnded)
       .on('zoom', zoomed))
 
   function draw(shifts: Shift[], employee: Employee) {
@@ -427,8 +403,8 @@ function byEmployee(employee: Employee, centerDate: Date) {
 
     svg.select('g.shifts').selectAll<SVGElement, Shift>('g.shift').data(shifts, d => d._id).join(
       enter => enter.append('g')
-        .each(updatePositions)
-        .call(drawShift, bandwidth, {[employee.id]: employee})
+        .each(shift => updatePositions(shift, employees))
+        .call(drawShift, {[employee.id]: employee})
         .each(function (d) {
           d3.select(this)
             .attr('opacity', 0)
@@ -446,7 +422,7 @@ function byEmployee(employee: Employee, centerDate: Date) {
             s.select('g.duration').attr('transform', `translate(${dx},0)`);
           })
         )
-        .call(s => s.select('g.text').attr('transform', d => `translate(${d.x + 4},${-rowTextHeight})`))
+        .call(s => s.select('g.text').attr('transform', d => `translate(${d.x},${-constants.ROW_TEXT_HEIGHT})`))
         .call(s => s.selectAll<SVGElement, ShiftComponent>('g.group')
           .attr('transform', d => `translate(${d.x},0)`)
           .call(s => s.select('rect')
@@ -458,7 +434,7 @@ function byEmployee(employee: Employee, centerDate: Date) {
           .each(filterShiftComponentTimeVisibility)
         ),
       update => update
-        .each(updatePositions)
+        .each(shift => updatePositions(shift, employees))
         .call(s => s.selectAll('g.group').data(d => d.components)) // strange that this is required
         .call(s => s.transition(t).delay(100)
           .call(s => s.select('g.text')
@@ -469,7 +445,7 @@ function byEmployee(employee: Employee, centerDate: Date) {
               s.select('g.duration').attr('transform', `translate(${dx},0)`);
             })
           )
-          .call(s => s.select('g.text').attr('transform', d => `translate(${d.x+4},${-rowTextHeight})`))
+          .call(s => s.select('g.text').attr('transform', d => `translate(${d.x},${-constants.ROW_TEXT_HEIGHT})`))
           .attr('transform', d => `translate(0,${d.y})`)
           .selectAll<SVGElement, ShiftComponent>('g.group')
           .attr('transform', d => `translate(${d.x},0)`)
@@ -489,11 +465,11 @@ function byEmployee(employee: Employee, centerDate: Date) {
     });
   }
 
-  function updatePositions(shift: Shift) {
+  function updatePositions(shift: Shift, employees: {[id: string]: Employee}) {
     calculateNorms(shift);
     for (const comp of shift.components) {
       const index = comp.type == ShiftComponentType.Projected ? 1 : 0;
-      comp.fill = d3.color(employeeColorScale(shift.employeeColor.toString())[index]);
+      comp.fill = d3.color(employeeColorScale(employee[shift.employee].color.toString())[index]);
       comp.x = xScale(comp.startNorm);
       comp.w = Math.max(xScale(comp.endNorm) - comp.x, 0);
     }
@@ -502,38 +478,8 @@ function byEmployee(employee: Employee, centerDate: Date) {
     return shift;
   }
 
-  let lastOffsetY = 0,
-    currentOffset = 0,
-    transform = d3.zoomIdentity;
-
-  function manualTranslate(z) {
-    let lastOffsetY = 0, currentOffset = 0, transform = d3.zoomIdentity;
-    z.on('start', zoomStarted).on('end', zoomEnded).on('zoom', zoomed);
-  }
-
-  function zoomStarted() {
-    const { sourceEvent } = d3.event;
-    if (sourceEvent == null) return;
-    lastOffsetY = sourceEvent.type == "touchstart" ? sourceEvent.touches[0].screenY : sourceEvent.offsetY;
-  }
-
-  function zoomEnded() {
-    currentOffset = transform.y;
-  }
-
   function zoomed() {
     xScale = d3.event.transform.rescaleX(xScaleCopy);
-
-    // manually compute the drag distance and create zoom transform
-    const { sourceEvent } = d3.event;
-    let dy = 0;
-    if (sourceEvent != null) {
-      const {type, touches, offsetY } = sourceEvent; 
-      dy = (type == 'touchmove' ? touches[0].screenY : offsetY) - lastOffsetY + currentOffset;
-      // dy = Math.max(dy, 0);
-      transform = d3.zoomIdentity.translate(0, dy);
-      yScale = transform.rescaleY(yScaleCopy);
-    }
     topAxis = topAxis.scale(xScale);
     bottomAxis = bottomAxis.scale(xScale);
     drawAxis();
@@ -546,9 +492,9 @@ function byEmployee(employee: Employee, centerDate: Date) {
  
     svg.select('g.shifts')
       .selectAll<SVGElement, Shift>('g.shift')
-      .each(updatePositions)
+      .each(shift => updatePositions(shift, employees))
       .attr('transform', d => `translate(0,${d.y})`)
-      .call(s => s.select('g.text').attr('transform', d => `translate(${d.x + 4},${-rowTextHeight})`))
+      .call(s => s.select('g.text').attr('transform', d => `translate(${d.x},${-constants.ROW_TEXT_HEIGHT})`))
       .call(s => s.selectAll<SVGElement, ShiftComponent>('g.group')
         .attr('transform', d => `translate(${d.x},0)`)
         .call(s => s.select('rect')
@@ -582,7 +528,7 @@ function byEmployee(employee: Employee, centerDate: Date) {
     drawAxis();
 
     svg.select('g.shifts').selectAll<SVGElement, Shift>('g.shift')
-      .each(updatePositions)
+      .each(shift => updatePositions(shift, employees))
       .call(s => s.selectAll('g.group').data(d => d.components))
       .call(s => s.transition(t).delay(100)
         .call(s => s.select('g.text')
@@ -593,7 +539,7 @@ function byEmployee(employee: Employee, centerDate: Date) {
             s.select('g.duration').attr('transform', `translate(${dx},0)`);
           })
         )
-        .call(s => s.select('g.text').attr('transform', d => `translate(${d.x+4},${-rowTextHeight})`))
+        .call(s => s.select('g.text').attr('transform', d => `translate(${d.x},${-constants.ROW_TEXT_HEIGHT})`))
         .attr('transform', d => `translate(0,${d.y})`)
         .selectAll<SVGElement, ShiftComponent>('g.group')
         .attr('transform', d => `translate(${d.x},0)`)
@@ -620,12 +566,11 @@ function byEmployee(employee: Employee, centerDate: Date) {
 }
 
 function filterShiftComponentTimeVisibility(d) {
-  const {w} = d;
   const sel = d3.select(this);
   sel.select('text.time.start')
-    .attr('opacity', w > 120 ? 1 : 0);
+    .attr('opacity', d.w > constants.START_MIN_WIDTH_THRESHOLD ? 1 : 0);
   sel.select('text.time.end')
-    .attr('opacity', w > 200 ? 1 : 0);
+    .attr('opacity', d.w > constants.END_MIN_WIDTH_THRESHOLD ? 1 : 0);
 }
 
 function drawStrokeAnimation(sel, colors: string[]) {
@@ -638,19 +583,10 @@ function drawStrokeAnimation(sel, colors: string[]) {
     .attr('repeatCount', 'indefinite');
 }
 
-function drawShift(sel, bandwidth, employees) {
-  return sel
-    .classed('shift', true)
-    .attr('cursor', 'pointer')
-    // shift label
+function drawShift(sel, employees) {
+  return sel.classed('shift', true)
     .call(s => s.append('g').classed('text', true)
-      .call(s => s.append('text')
-        .classed('shift-label', true)
-        .attr('y', 10)
-        .attr('text-anchor', 'start')
-        .attr('alignment-baseline', 'bottom')
-        .text(d => formatName(employees[d.employee]))
-      )
+      .call(s => s.append('text').classed('name', true).text(d => formatName(employees[d.employee])))
       .filter(d => d.started)
       .call(s => s.append('g').classed('duration', true)
         .each(function (d) {
@@ -661,28 +597,25 @@ function drawShift(sel, bandwidth, employees) {
         })
         .call(s => s.append('text')
           .attr('x', 24)
-          .attr('y', 10)
-          .attr('alignment-baseline', 'bottom')
-          .text(d => `${formatDuration(d.duration)}`)
+          .attr('y', 5)
+          .text(d => formatDuration(d.duration))
         ),
       )
     )
-    // shift components
     .call(s => s.selectAll('g.group').data(d => d.components).enter().append('g').classed('group', true)
-      .call(s => s.append('rect').attr('stroke-width', 4).attr('height', bandwidth).attr('rx', 8))
-      .call(s => s.filter(d => d.showTime)
-        .call(e => e.append('text')
+      .call(s => s.append('rect').attr('height', constants.RECT_HEIGHT).attr('rx', 8))
+      .call(s => s.append('text')
           .classed('time start', true)
           .attr('alignment-baseline', 'middle')
           .attr('x', 4)
-          .attr('y', bandwidth / 2)
+          .attr('y', constants.RECT_HEIGHT / 2)
           .text(d => formatTime(d.start))
         )
         .call(e => e.append('text')
           .classed('time end', true)
           .attr('text-anchor', 'end')
           .attr('alignment-baseline', 'middle')
-          .attr('y', bandwidth / 2)
+          .attr('y', constants.RECT_HEIGHT / 2)
           .text(d => formatTime(d.end))
         )
       )
@@ -690,8 +623,7 @@ function drawShift(sel, bandwidth, employees) {
         if (d.type == ShiftComponentType.Actual && d.state == ShiftState.Incomplete) {
           d3.select(this).select('rect').call(drawStrokeAnimation, [d.fill.hex(), '#fff']);
         }
-      })
-    );
+      });
 }
 
 const arc = d3.arc();
@@ -699,11 +631,11 @@ function drawMiniPie(sel, frac: number, employeeColor: EmployeeShiftColor, radiu
   const c = employeeColorScale(employeeColor.toString());
   const endAngle = 2 * Math.PI * Math.min(Math.max(frac, 0), 1);
   const startAngle = 0;
-  return sel.append('g')
-    .attr('transform', `translate(${radius},${radius/2})`)
+  return sel.append('g').classed('pie', true)
+    .attr('transform', `translate(${radius},0)`)
     .call(s => s.append('circle').attr('r', 10).attr('fill', c[1]))
     .call(s => s.append('path').attr('fill', c[0])
-      .attr('d', d => arc({ startAngle, endAngle, outerRadius: radius, innerRadius: 0 })));
+    .attr('d', d => arc({ startAngle, endAngle, outerRadius: radius, innerRadius: 0 })));
 }
 
 function drawButton(text: string, [w, h]: [number, number]) {

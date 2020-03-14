@@ -36,9 +36,13 @@ function wrapSocketMessages<T>(
   return observable as FancyObservable<T>;
 }
 
-export function socket<T>(url, timeoutDuration = DEFAULT_TIMEOUT_DURATION): Observable<FancyObservable<T>> {
+export function socket<T>(url, timeoutDuration = DEFAULT_TIMEOUT_DURATION, binary = false, parser?): Observable<FancyObservable<T>> {
   return new Observable(function (subscriber) {
     const socket = new WebSocket(url);
+
+    if (binary) {
+      socket.binaryType = 'arraybuffer';
+    }
 
     socket.addEventListener('open', socketOpen);
     socket.addEventListener('close', socketClose);
@@ -54,7 +58,7 @@ export function socket<T>(url, timeoutDuration = DEFAULT_TIMEOUT_DURATION): Obse
     }, timeoutDuration);
 
     function socketOpen() {
-      subscriber.next(wrapSocketMessages(socket));
+      subscriber.next(wrapSocketMessages(socket, parser));
       subscriber.complete();
       clearTimeout(timeout);
       clearListeners();

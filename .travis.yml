@@ -21,7 +21,7 @@ os:
 
 cache:
   directories:
-    - ./services/web/node_modules
+    - ./client/node_modules
 
 #before_install:
 #  - npm i -g npm
@@ -32,7 +32,7 @@ before_script:
 
 script:
   - docker-compose build
-  - cd services/web/
+  - cd ./client/
   - npm install
   - npm run-script build:ci
 
@@ -43,7 +43,7 @@ deploy:
     allow_failure: true
     keep_history: true
     verbose: true
-    local_dir: services/web/dist
+    local_dir: ./client/dist
     edge: true
     on:
       branch: master

@@ -6,19 +6,13 @@ import { socket } from './socket';
 
 import { Employee, ShiftComponent, Shift, ShiftComponentType, EmployeeShiftColor, ShiftState } from './models';
 import { employeeColorScale, formatDuration, formatTime, formatDateWeekday } from './util';
+import * as constants from './constants';
 
 declare const GENERATE_MOCKING: boolean;
 declare const NODE_ENV: string;
 const worker = Comlink.wrap(new Worker('./data.worker.ts', { type: 'module' })) as any;
 
 let now: Date;
-const START_MIN_WIDTH_THRESHOLD = 50;
-const END_MIN_WIDTH_THRESHOLD = 100;
-
-const rowStep = 70;
-const rowTextHeight = 12;
-const rectHeight = 40;
-
 const body = d3.select(document.body).call(s => s.append('svg'));
 
 async function main() {
@@ -46,7 +40,7 @@ async function byTime(date: Date) {
   const dim = [totalWidth, height];
 
   const rowCount = 12;
-  const contentHeight = rowCount * rowStep + margin.top + margin.bottom + axisLabelHeight;
+  const contentHeight = rowCount * constants.ROW_STEP + margin.top + margin.bottom + axisLabelHeight;
 
   const d0 = new Date(+date - domainWidth / 2);
   const d1 = new Date(+date + domainWidth / 2);
@@ -89,18 +83,18 @@ async function byTime(date: Date) {
     switchMap(domain => worker.getShiftsInRange(domain)),
   ).subscribe((data: any) => {
     const dim: [number, number] = [totalWidth, contentHeight];
-    data.shifts.forEach(updatePositions);
+    data.shifts.forEach(shift => updatePositions(shift, data.employees));
     draw(data, dim);
   });
 
-  const updatePositions = (shift: Shift) => {
+  const updatePositions = (shift: Shift, employees: {[id: string]: Employee}) => {
     for (const comp of shift.components) {
       const index = comp.type == ShiftComponentType.Projected ? 1 : 0;
-      comp.fill = d3.color(employeeColorScale(shift.employeeColor.toString())[index]);
+      comp.fill = d3.color(employeeColorScale(employees[shift.employee].Color.toString())[index]);
       comp.x = xScale(comp.start);
-      comp.w = Math.max(xScale(comp.end) - comp.x, 0);
+      comp.w = Math.max(xScale(comp.end || new Date()) - comp.x, 0);
     }
-    shift.y = shift.row * rowStep + margin.top + axisLabelHeight;
+    shift.y = shift.row * constants.ROW_STEP + margin.top + axisLabelHeight;
     const [a, b] = [shift.start, shift.end || now].map(xScale);
     shift.x = Math.min(Math.max(a, 0), b);
     if (isNaN(shift.y)) {
@@ -109,29 +103,57 @@ async function byTime(date: Date) {
     return shift;
   }
 
+  function drawShift(s, employees) {
+    return s.classed('shift time', true).attr('transform', d => `translate(0,${d.y})`)
+      .call(s => s.append('g').classed('text', true).attr('transform', d => `translate(${d.x},${-constants.ROW_TEXT_HEIGHT})`)
+        .call(s => s.append('text').classed('name', true).text(d => formatName(employees[d.employee])))
+        .each(function (d) {
+          const s = d3.select(this);
+          const dx = (this.firstChild as SVGGraphicsElement).getBBox().width + 4;
+          const frac = d.duration / d.expectedDuration;
+          s.append('g').classed('duration', true)
+            .attr('transform', `translate(${dx},0)`)
+            .call(drawMiniPie, frac, employees[d.employee].color)
+            .call(s => s.append('text').attr('y', 0).attr('x', 24).text(formatDuration(d.duration)))
+        })
+      )
+      .call(s => s.selectAll('g.component').data(d => d.components).enter()
+        .append('g').classed('component', true)
+        .attr('transform', d => `translate(${d.x},0)`)
+        .call(s => s.append('title').text(d => `${formatTime(d.start)}-${formatTime(d.end || new Date())}`))
+        .call(s => s.append('rect')
+          .attr('rx', 8)
+          .attr('ry', 8)
+          .attr('width', d => d.w)
+          .attr('height', constants.RECT_HEIGHT)
+          .attr('fill', d => d.fill.toString()))
+        .each(filterShiftComponentTimeVisibility)
+      )
+  }
   function draw({shifts, employees}:{shifts: Shift[], employees: {[id: string]: Employee}}, [w, h]: [number, number]) {
     body.select('svg').attr('width', w).attr('height', h).select('g.shifts').raise().selectAll('g.shift').data(shifts, d => d['_id']).join(
       enter => enter.append('g').classed('shift time', true).attr('transform', d => `translate(0,${d.y})`)
-        .call(s => s.append('g').classed('text', true).attr('transform', d => `translate(${d.x},${-rowTextHeight})`)
+        .call(s => s.append('g').classed('text', true).attr('transform', d => `translate(${d.x},${-constants.ROW_TEXT_HEIGHT})`)
           .call(s => s.append('text').classed('name', true).text(d => formatName(employees[d.employee])))
           .each(function (d) {
             const s = d3.select(this);
             const dx = (this.firstChild as SVGGraphicsElement).getBBox().width + 4;
-            s.append('g')
+            const frac = d.duration / d.expectedDuration;
+            s.append('g').classed('duration', true)
               .attr('transform', `translate(${dx},0)`)
-              .call(drawMiniPie, d.duration / d.expectedDuration, d.employeeColor)
+              .call(drawMiniPie, frac, employees[d.employee].Color)
               .call(s => s.append('text').attr('y', 5).attr('x', 24).text(formatDuration(d.duration)))
           })
         )
         .call(s => s.selectAll('g.component').data(d => d.components).enter()
           .append('g').classed('component', true)
           .attr('transform', d => `translate(${d.x},0)`)
-          .call(s => s.append('title').text(d => `${formatTime(d.start)}-${formatTime(d.end)}`))
+          .call(s => s.append('title').text(d => `${formatTime(d.start)}-${formatTime(d.end || new Date())}`))
           .call(s => s.append('rect')
             .attr('rx', 8)
             .attr('ry', 8)
             .attr('width', d => d.w)
-            .attr('height', rectHeight)
+            .attr('height', constants.RECT_HEIGHT)
             .attr('fill', d => d.fill.toString()))
           .each(filterShiftComponentTimeVisibility)
         ).on('click', d => {
@@ -192,7 +214,6 @@ async function byTime(date: Date) {
       .call(s => s.selectAll('.tick').select('line').remove());
   }
   
-  
   function drawDateAxis(sel, scale) {
     if (sel.select('g.axis.date').empty()) {
       sel.append('g').classed('axis date', true);
@@ -222,11 +243,11 @@ function byEmployee(employeeId: string, date = new Date()) {
   const margin = {top: 80, left: 80, right: 10, bottom: 10};
   const {innerWidth: width, innerHeight: height} = window;
 
-  const domainHeight = height / rowStep * 8.64e7;
+  const domainHeight = height / constants.ROW_STEP * 8.64e7;
   const d0 = new Date(+date - domainHeight / 2);
   const d1 = new Date(+date + domainHeight / 2);
 
-  const totalHeight = rowStep * 20 * 7;
+  const totalHeight = constants.ROW_STEP * 20 * 7;
   const dim = [width, totalHeight];
 
   const yScale = d3.scaleTime().domain([d0, d1]).range([totalHeight / 2 - height / 2, totalHeight / 2 + height / 2]);
@@ -277,11 +298,11 @@ function byEmployee(employeeId: string, date = new Date()) {
     draw(data, dim);
   });
 
-  const updatePositions = (shift: Shift) => {
+  const updatePositions = (shift: Shift, employees: {[id: string]: Employee}) => {
     calculateNorms(shift);
     for (const comp of shift.components) {
       const index = comp.type == ShiftComponentType.Projected ? 1 : 0;
-      comp.fill = d3.color(employeeColorScale(shift.employeeColor.toString())[index]);
+      comp.fill = d3.color(employeeColorScale(employees[shift.employee].Color.toString())[index]);
       comp.x = xScale(comp.startNorm);
       comp.w = Math.max(xScale(comp.endNorm) - comp.x, 0);
     }
@@ -295,26 +316,26 @@ function byEmployee(employeeId: string, date = new Date()) {
       enter => enter.append('g').classed('shift employee', true)
         .attr('transform', d => `translate(0,${d.y})`)
         .call(s => s.append('g').classed('text', true)
-          .attr('transform', d => `translate(${d.x},${-rowTextHeight})`)
+          .attr('transform', d => `translate(${d.x},${-constants.ROW_TEXT_HEIGHT})`)
           .call(s => s.append('text').classed('name', true).text(d => formatDateWeekday(d.start)))
           .each(function (d) {
             const s = d3.select(this);
             const dx = (this.firstChild as SVGGraphicsElement).getBBox().width + 4;
-            s.append('g')
+            s.append('g').classed('duration', true)
               .attr('transform', `translate(${dx},0)`)
-              .call(drawMiniPie, d.duration / d.expectedDuration, d.employeeColor)
+              .call(drawMiniPie, d.duration / d.expectedDuration, employees[d.employee].Color)
               .call(s => s.append('text').attr('y', 5).attr('x', 24).text(formatDuration(d.duration)))
           })
         )
         .call(s => s.selectAll('g.component').data(d => d.components).enter()
           .append('g').classed('component', true)
           .attr('transform', d => `translate(${d.x},0)`)
-          .call(s => s.append('title').text(d => `${formatTime(d.start)}-${formatTime(d.end)}`))
+          .call(s => s.append('title').text(d => `${formatTime(d.start)}-${formatTime(d.end || new Date())}`))
           .call(s => s.append('rect')
             .attr('rx', 8)
             .attr('ry', 8)
             .attr('width', d => d.w)
-            .attr('height', rectHeight)
+            .attr('height', constants.RECT_HEIGHT)
             .attr('fill', d => d.fill.toString()))
           .each(filterShiftComponentTimeVisibility)
         ).on('click', d => {
@@ -322,10 +343,10 @@ function byEmployee(employeeId: string, date = new Date()) {
           byTime(d.start);
         }),
       update => update
-        .call(s => s.select('g.text').attr('transform', d => `translate(${d.x},${-rowTextHeight})`))
+        .call(s => s.select('g.text').attr('transform', d => `translate(${d.x},${-constants.ROW_TEXT_HEIGHT})`))
         .call(s => s.selectAll('g.component').data(d => d.components)
           .attr('transform', d => `translate(${d.x},0)`)
-          .call(s => s.select('title').text(d => `${formatTime(d.start)}-${formatTime(d.end)}`))
+          .call(s => s.select('title').text(d => `${formatTime(d.start)}-${formatTime(d.end || new Date())}`))
           .call(s => s.select('rect').attr('width', d => d.w))
           .each(filterShiftComponentTimeVisibility)),
       exit => exit.remove(),
@@ -365,7 +386,7 @@ function calculateNorms(shift: Shift) {
     date.setDate(1 + offset);
     comp.startNorm = date;
 
-    date = new Date(comp.end);
+    date = new Date(comp.end || new Date());
     offset = d3.timeDay.count(first, date);
     date.setFullYear(2000);
     date.setMonth(0)
@@ -389,11 +410,11 @@ function drawMiniPie(s, frac: number, employeeColor: EmployeeShiftColor, radius 
 
 function filterShiftComponentTimeVisibility (d: ShiftComponent) {
   const data = [
-    {'class': 'start', x: 4, 'opacity': d.showTime && d.w > START_MIN_WIDTH_THRESHOLD ? 1 : 0, text: formatTime(d.start)},
-    {'class': 'end', x: d.w - 4, 'opacity': d.showTime && d.w > END_MIN_WIDTH_THRESHOLD ? 1 : 0, text: formatTime(d.end)},
+    {'class': 'start', x: 4, 'opacity': d.w > constants.START_MIN_WIDTH_THRESHOLD ? 1 : 0, text: formatTime(d.start)},
+    {'class': 'end', x: d.w - 4, 'opacity': d.w > constants.END_MIN_WIDTH_THRESHOLD ? 1 : 0, text: formatTime(d.end || new Date())},
   ];
   return d3.select(this).selectAll('text.time').data(data, d => d['class']).join(
-    enter => enter.append('text').attr('class', d => `${d['class']} time`).attr('y', rectHeight / 2),
+    enter => enter.append('text').attr('class', d => `${d['class']} time`).attr('y', constants.RECT_HEIGHT / 2),
     update => update,
     exit => exit.remove()
   )
@@ -423,4 +444,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 
 const SOCKET_URL = `ws://${window.location.host}/socket`;
-socket(SOCKET_URL).pipe(switchMap(v => v)).subscribe(val => console.log(val));
+socket(SOCKET_URL, undefined, true, (data) => {
+  console.log('data', data);
+  return data as any;
+}).pipe(switchMap(v => v)).subscribe(val => console.log(val));

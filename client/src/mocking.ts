@@ -32,7 +32,7 @@ export function generateData(now = new Date(), fuzzy = 30): {shifts: models.Shif
       LastName: faker.name.lastName(),
       HireDate: new Date(),
       shift: { start, end, duration: 2.88e7 },
-      color: models.EmployeeShiftColor[models.EMPLOYEE_SHIFT_COLORS[i % models.EMPLOYEE_SHIFT_COLORS.length]],
+      Color: models.EmployeeShiftColor[models.EMPLOYEE_SHIFT_COLORS[i % models.EMPLOYEE_SHIFT_COLORS.length]],
     };
   }
   
@@ -126,7 +126,6 @@ export function generateData(now = new Date(), fuzzy = 30): {shifts: models.Shif
         components.push({
           _id: componentId,
           id: componentId,
-          showTime: true,
           type: models.ShiftComponentType.Actual,
           state,
           start,
@@ -142,7 +141,6 @@ export function generateData(now = new Date(), fuzzy = 30): {shifts: models.Shif
       if (punches.length != 4) {
         components.unshift({
           _id: shiftId + '-' + (9).toString(),
-          showTime: components.length == 0,
           type: models.ShiftComponentType.Projected,
           start: new Date(punches.length == 3 ? punches[2] : punches.length == 1 ? punches[0] : projectedStart),
           end: projectedEnd,
@@ -161,7 +159,6 @@ export function generateData(now = new Date(), fuzzy = 30): {shifts: models.Shif
         row: shiftRow,
         id: shiftId,
         employee: employee.id,
-        employeeColor: employee.color,
         state: models.ShiftState.Complete,
         components,
         started,

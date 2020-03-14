@@ -21,12 +21,12 @@ export interface Employee extends MongoObject {
   MiddleName: string;
   LastName: string;
   HireDate: Date;
-  shift: {
+  shift?: {
     start: Date;
     end: Date;
     duration: number;
   };
-  color: EmployeeShiftColor;
+  Color: EmployeeShiftColor;
 }
 
 export enum ShiftState {
@@ -49,7 +49,6 @@ interface BaseShiftComponent extends MongoObject {
   startNorm?: Date;
   endNorm?: Date;
   duration: number;
-  showTime: boolean;
   employeeId: EmployeeID; // needed for fill (gay)
 }
 
@@ -68,7 +67,6 @@ export interface Shift extends MongoObject {
   id: string;
   row: number;
   employee: EmployeeID;
-  employeeColor: EmployeeShiftColor;
   start: Date; // start of first component (actual or projected)
   startNorm?: Date; // start of first component (actual or projected)
   end: Date; // end of last component (actual or projected)

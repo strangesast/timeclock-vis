@@ -138,6 +138,7 @@ async def main(config):
                     latest_sync < latest_poll or
                     (d := (latest_poll + interval - now).total_seconds()) < 0
                     ) else d
+
             logging.info(f'sleeping for {timeout_duration} seconds')
             await asyncio.sleep(timeout_duration)
 
@@ -162,6 +163,7 @@ async def main(config):
                     logging.info(f'{latest_sync=}')
 
                     #if latest_poll and (latest_sync is None or latest_poll > latest_sync):
+                    # latest_sync - latest_poll > timedelta(minutes=5)
                     if latest_poll and (latest_sync is None or latest_poll - latest_sync > -timedelta(minutes=5)):
                         break   
 

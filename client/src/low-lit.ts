@@ -68,10 +68,10 @@ async function byTime(date: Date) {
     render(template(data, dim), document.body);
   });
 
-  const updatePositions = (shift: Shift) => {
+  const updatePositions = (shift: Shift, employees: {[id: string]: Employee}) => {
     for (const comp of shift.components) {
       const index = comp.type == ShiftComponentType.Projected ? 1 : 0;
-      comp.fill = d3.color(employeeColorScale(shift.employeeColor.toString())[index]);
+      comp.fill = d3.color(employeeColorScale(employees[shift.employee].Color.toString())[index]);
       comp.x = xScale(comp.start);
       comp.w = Math.max(xScale(comp.end) - comp.x, 0);
     }
@@ -109,7 +109,7 @@ async function byTime(date: Date) {
   ${repeat(shifts, shift => shift.id, (shift, index) => svg`
     <g @click=${shiftClickHandlerFn(shift)} class="shift" transform=${formatTransform([0, shift.y])}>
       <g class="text" transform=${formatTransform([shift.x, -rowTextHeight])}>
-        ${shift.started ? drawPieAndTime(shift) : ''}
+        ${shift.started ? drawPieAndTime(shift, employees[shift.employee].Color) : ''}
         <text class="name" x=${shift.started ? 80 : 0} y=${5}>${formatName(employees[shift.employee])}</text>
       </g>
       ${repeat(shift.components, c => c.id, (component, index) => svg`
@@ -198,11 +198,11 @@ function byEmployee(employeeId: string, date = new Date()) {
     [minx, -Infinity],
     [maxx, Infinity]
   ];
-  const updatePositions = (shift: Shift) => {
+  const updatePositions = (shift: Shift, employees: {[id: string]: Employee}) => {
     calculateNorms(shift);
     for (const comp of shift.components) {
       const index = comp.type == ShiftComponentType.Projected ? 1 : 0;
-      comp.fill = d3.color(employeeColorScale(shift.employeeColor.toString())[index]);
+      comp.fill = d3.color(employeeColorScale(employees[shift.employee].Color.toString())[index]);
       comp.x = xScale(comp.startNorm);
       comp.w = Math.max(xScale(comp.endNorm) - comp.x, 0);
     }
@@ -236,7 +236,7 @@ function byEmployee(employeeId: string, date = new Date()) {
   ${repeat(shifts, shift => shift.id, (shift, index) => svg`
     <g @click=${shiftClickHandlerFn(shift)} class="shift" transform=${formatTransform([0, shift.y])}>
       <g class="text" transform=${formatTransform([shift.x, -rowTextHeight])}>
-        ${shift.started ? drawPieAndTime(shift) : ''}
+        ${shift.started ? drawPieAndTime(shift, employees[shift.employee].Color) : ''}
         <text class="name" x=${shift.started ? 80 : 0} y=${5}>${formatDateWeekday(shift.start)}</text>
       </g>
       ${repeat(shift.components, c => c.id, (component, index) => svg`
@@ -297,16 +297,16 @@ function calculateNorms(shift: Shift) {
 
 
 
-const drawPieAndTime = (shift: Shift) => svg`
-  ${drawMiniPie(shift.duration / shift.expectedDuration, shift.employeeColor)}
+const drawPieAndTime = (shift: Shift, employeeColor: EmployeeShiftColor) => svg`
+  ${drawMiniPie(shift.duration / shift.expectedDuration, employeeColor)}
   <text class="time" y="5" x="24" >${formatDuration(shift.duration)}</text>
 `;
 
 const START_MIN_WIDTH_THRESHOLD = 50;
 const END_MIN_WIDTH_THRESHOLD = 100;
 const filterShiftComponentTimeVisibility = (d: ShiftComponent) => svg`
-  <text class="time start" opacity=${d.showTime && d.w > START_MIN_WIDTH_THRESHOLD ? 1 : 0} y=${rectHeight/2} x=4>${formatTime(d.start)}</text>
-  <text class="time end" opacity=${d.showTime && d.w > END_MIN_WIDTH_THRESHOLD ? 1 : 0} y=${rectHeight/2} x=${d.w - 4}>${formatTime(d.end)}</text>
+  <text class="time start" opacity=${d.w > START_MIN_WIDTH_THRESHOLD ? 1 : 0} y=${rectHeight/2} x=4>${formatTime(d.start)}</text>
+  <text class="time end" opacity=${d.w > END_MIN_WIDTH_THRESHOLD ? 1 : 0} y=${rectHeight/2} x=${d.w - 4}>${formatTime(d.end)}</text>
 `;
 
 const arc = d3.arc();

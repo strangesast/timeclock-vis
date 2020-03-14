@@ -7,14 +7,13 @@ import pymongo
 import configparser
 from aiohttp import web
 from datetime import datetime
+import bson
 from bson.json_util import dumps
 from aiojobs.aiohttp import setup, spawn
 
 from util import get_mongo_db
 from graph import get_graph_data
 
-EMPLOYEE_IDS = ['50', '53', '71', '61', '82', '73', '55', '72', '66', '62', '69',
-        '67', '80', '79', '57', '51', '70', '74', '54', '56', '58', '59', '64', '65']
 
 routes = web.RouteTableDef()
 
@@ -36,6 +35,24 @@ async def recheck(request):
     res = await get_graph_data(db)
     return web.Response(text=dumps(res))
 
+SHIFTS_PIPELINE = [
+    {'$unwind': '$components'},
+    {'$lookup': {'from': 'components', 'localField': 'components', 'foreignField': '_id', 'as': 'components'}},
+    {'$unwind': {'path': '$components', 'preserveNullAndEmptyArrays': True}},
+    {'$addFields': {'components.id': {'$toString': '$components.id'}}},
+    {'$addFields': {'components.duration': {'$subtract': [{'$ifNull': ['$components.end', '$$NOW']}, '$components.start']}}},
+    {'$group': {'_id': '$_id', 'components': {'$push': '$$ROOT.components'}, 'root': {'$first': '$$ROOT'}}},
+    {'$addFields': {'root.components': '$components'}},
+    {'$replaceRoot': {'newRoot': '$root'}},
+    {'$addFields': {'duration': {'$map': {'input': '$components', 'as': 'comp', 'in': '$$comp.duration'}}}},
+    {'$addFields': {'duration': {'$sum': '$duration'}}},
+    {'$match': {'row': {'$ne': [None]}}},
+    {'$addFields': {
+        'id': {'$toString': '$_id'},
+        'expectedDuration': 1000 * 60 * 60 * 8,
+    }},
+    {'$project': {'_id': 0}},
+]
 
 @routes.get('/data/shifts')
 async def get_shifts(request):
@@ -66,40 +83,40 @@ async def get_shifts(request):
     #query['flagged'] = False
 
     if employee_id := q.get('employee'):
-        employee = await db.employees.find_one({'id': employee_id})
+        employee = await db.employees.find_one({'id': employee_id}, projection={'_id': False})
         if employee is None:
             return web.HTTPNotFound(body=f'no employee with id: "{employee_id}"')
         query['employee'] = employee_id
         employees = {employee_id: employee}
     else:
-        employees = await db.employees.find({}).to_list(100)
+        employees = await db.employees.find({}, projection={'_id': False}).to_list(100)
         employees = {id: employee for employee in employees if (id := employee.get('id'))}
 
     # ayy join
-    st = time.time()
-    shifts = []
 
-    async for shift in db.shifts.aggregate([
-        {'$match': query},
-        {'$unwind': '$components'},
-        {'$lookup': {'from': 'components', 'localField': 'components', 'foreignField': '_id', 'as': 'components'}},
-        {'$unwind': {'path': '$components', 'preserveNullAndEmptyArrays': True}},
-        {'$addFields': {'components.duration': {'$subtract': [{'$ifNull': ['$components.end', '$$NOW']}, '$components.start']}}},
-        {'$group': {'_id': '$_id', 'components': {'$push': '$$ROOT.components'}, 'root': {'$first': '$$ROOT'}}},
-        {'$addFields': {'root.components': '$components'}},
-        {'$replaceRoot': {'newRoot': '$root'}},
-        {'$addFields': {'duration': {'$map': {'input': '$components', 'as': 'comp', 'in': '$$comp.duration'}}}},
-        {'$addFields': {'duration': {'$sum': '$duration'}}},
-        {'$match': {'row': {'$ne': [None]}}},
-        ]):
-        shifts.append(shift)
-    t = time.time() - st
 
-    return web.Response(text=dumps({
+    pipeline = [{'$match': query}, *SHIFTS_PIPELINE]
+
+    shifts = await db.shifts.aggregate(pipeline).to_list(None)
+
+    obj = {
         'employees': employees,
-        'employeeIds': [employee_id] if employee_id is not None else EMPLOYEE_IDS,
+        'employeeIds': list(employees.keys()),
         'shifts': shifts,
-    }))
+    }
+
+    if 'application/bson' in request.headers.get('accept'):
+        resp = web.StreamResponse()
+        resp.content_type = 'application/bson'
+        await resp.prepare(request) 
+        buf = bson.encode(obj)
+        resp.content_length = len(buf)
+        await resp.write(buf)
+    else:
+        resp = web.Response(text=dumps(obj))
+        resp.content_type = 'text/plain'
+
+    return resp
 
 
 def parse_qs(query):
