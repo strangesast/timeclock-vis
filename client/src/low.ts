@@ -294,7 +294,7 @@ function byEmployee(employeeId: string, date = new Date()) {
       }, [] as Date[])) as [Date, Date];
     xScale.domain([minTime, maxTime]);
 
-    data.shifts.forEach(updatePositions);
+    data.shifts.forEach(shift => updatePositions(shift, data.employees));
     draw(data, dim);
   });
 

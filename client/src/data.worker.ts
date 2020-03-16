@@ -113,12 +113,19 @@ if (GENERATE_MOCKING) {
       url.searchParams.set('minDate', minDate.toISOString());
       url.searchParams.set('maxDate', maxDate.toISOString());
       url.searchParams.set('employee', employeeId);
-      const res = await fetch(url.toString());
+      const res = await fetch(url.toString(), {headers: {'Accept': 'application/bson'}});
       if (res.status < 200 || res.status >= 400) {
         throw new Error(`failed to fetch shifts: ${res.statusText}`);
       }
-      const content = await res.json();
-      interpretResponse(content);
+      let content;
+      if (res.headers.has('Content-Type') && res.headers.get('Content-Type') === 'application/bson') {
+        let buf = await res.arrayBuffer();
+        buf = new Uint8Array(buf)
+        content = deserialize(buf);
+      } else {
+        content = await res.json();
+        interpretResponse(content);
+      }
       return content;
     },
     async getGraphData(dateRange?: models.DateRange): Promise<models.GraphDataResponse> {

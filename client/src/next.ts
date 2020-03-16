@@ -366,6 +366,8 @@ function byEmployee(employee: Employee, centerDate: Date) {
   function draw(shifts: Shift[], employee: Employee) {
     const t = d3.transition().duration(500);
 
+    svg.attr('height', '100%');
+
     // uggggly
     const [minTime, maxTime] = d3.extent(shifts
       .reduce((acc, s) => {
@@ -475,7 +477,7 @@ function byEmployee(employee: Employee, centerDate: Date) {
     calculateNorms(shift);
     for (const comp of shift.components) {
       const index = comp.type == ShiftComponentType.Projected ? 1 : 0;
-      comp.fill = d3.color(employeeColorScale(employee[shift.employee].color.toString())[index]);
+      comp.fill = d3.color(employeeColorScale(employees[shift.employee]['Color'].toString())[index]);
       comp.x = xScale(comp.startNorm);
       comp.w = Math.max(xScale(comp.endNorm) - comp.x, 0);
     }
