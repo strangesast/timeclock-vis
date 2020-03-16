@@ -145,8 +145,8 @@ async def main(config):
             # update polls, wait for next poll update after interval
             while True:
                 async with mysql_client.cursor() as mysql_cursor:
-                    await mysql_cursor.execute('ANALYZE TABLE tam.polllog');
-                    await mysql_cursor.fetchall()
+                    #await mysql_cursor.execute('ANALYZE TABLE tam.polllog');
+                    #await mysql_cursor.fetchall()
                     if latest_poll:
                         await mysql_cursor.execute('select StartTime from tam.polllog where StartTime > %s order by StartTime desc', (latest_poll.astimezone(tz).replace(tzinfo=None),))
                     else:
