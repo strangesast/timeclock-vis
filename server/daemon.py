@@ -119,12 +119,26 @@ async def main(config):
     buf = 60 # 1 minute. added to interval, or used as timeout between retries
 
     try:
+        # update polls, wait for next poll update after interval
+        latest_poll = d.get('date') if (d := await mongo_db.polls.find_one({}, sort=[('date', pymongo.DESCENDING)])) else None
+        latest_sync = d.get('date') if (d := await mongo_db.sync_history.find_one({}, sort=[('date', pymongo.DESCENDING)])) else None
+
         while True:
 
-            latest_poll = await mongo_db.polls.find_one({}, sort=[('date', pymongo.DESCENDING)])
-            latest_poll = latest_poll and latest_poll.get('date')
-            latest_sync = await mongo_db.sync_history.find_one({}, sort=[('date', pymongo.DESCENDING)])
-            latest_sync = latest_sync and latest_sync.get('date')
+            async with mysql_client.cursor() as mysql_cursor:
+                if latest_poll:
+                    await mysql_cursor.execute('select StartTime from tam.polllog where StartTime > %s order by StartTime desc',
+                            (latest_poll + tz.utcoffset(latest_poll),))
+                else:
+                    await mysql_cursor.execute('select StartTime from tam.polllog order by StartTime desc')
+                    
+                if mysql_cursor.rowcount:
+                    polls = [{'date': tz.localize(date).astimezone(pytz.UTC).replace(tzinfo=None)} for date, in
+                            await mysql_cursor.fetchall()]
+                    print(f'{len(polls)=}')
+                    latest_poll = polls[0]['date']
+                    await mongo_db.polls.insert_many(polls)
+
 
             now = datetime.utcnow()
 
@@ -132,46 +146,12 @@ async def main(config):
             logging.info(f'{latest_poll=}')
             logging.info(f'{latest_sync=}')
 
-            timeout_duration = 0 if (
-                    latest_poll is None or
-                    latest_sync is None or
-                    latest_sync < latest_poll or
-                    (d := (latest_poll + interval - now).total_seconds()) < 0
-                    ) else d
+            if latest_poll and latest_sync and latest_sync > latest_poll:
+                timeout_duration = d if (d := (latest_poll + interval - now).total_seconds()) > 0 else 60
+                logging.info(f'sleeping for {timeout_duration} seconds')
+                await asyncio.sleep(timeout_duration)
+                continue
 
-            logging.info(f'sleeping for {timeout_duration} seconds')
-            await asyncio.sleep(timeout_duration)
-
-            # update polls, wait for next poll update after interval
-            while True:
-                async with mysql_client.cursor() as mysql_cursor:
-                    #await mysql_cursor.execute('ANALYZE TABLE tam.polllog');
-                    #await mysql_cursor.fetchall()
-                    if latest_poll:
-                        await mysql_cursor.execute('select StartTime from tam.polllog where StartTime > %s order by StartTime desc', (latest_poll.astimezone(tz).replace(tzinfo=None),))
-                    else:
-                        await mysql_cursor.execute('select StartTime from tam.polllog order by StartTime desc')
-                        
-                    if mysql_cursor.rowcount:
-                        polls = [{'date': tz.localize(date).astimezone(pytz.UTC).replace(tzinfo=None)} for date, in await mysql_cursor.fetchall()]
-                        latest_poll = polls[0]['date']
-                        await mongo_db.polls.insert_many(polls)
-
-                    now = datetime.utcnow()
-                    logging.info(f'{now=}')
-                    logging.info(f'{latest_poll=}')
-                    logging.info(f'{latest_sync=}')
-
-                    #if latest_poll and (latest_sync is None or latest_poll > latest_sync):
-                    # latest_sync - latest_poll > timedelta(minutes=5)
-                    if latest_poll and (latest_sync is None or latest_poll - latest_sync > -timedelta(minutes=5)):
-                        break   
-
-                # if no new poll, wait 1 minute, check for poll again
-                logging.info(f'sleeping for {buf} seconds')
-                await asyncio.sleep(buf)
-
-            now = datetime.utcnow()
             min_date = get_sunday((min(now, latest_sync) if latest_sync else (now - timedelta(days=365))).astimezone(tz)).replace(tzinfo=None)
             #min_date = min(get_sunday(now.astimezone(tz)), get_sunday(latest_sync)) if latest_sync else get_sunday(now - timedelta(days=365))
             logging.info(f'{min_date=}')
@@ -180,6 +160,7 @@ async def main(config):
             await recalculate(mongo_db, min_date)
             print(f'inserting... {now}')
             await mongo_db.sync_history.insert_one({'date': now})
+            latest_sync = now
 
     except asyncio.CancelledError:
         pass
