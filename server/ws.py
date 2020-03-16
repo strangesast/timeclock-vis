@@ -52,7 +52,7 @@ async def background(app):
 
                 async for latest_state in cursor:
                     for ws in websockets:
-                        ws.send_str(dumps(latest_state))
+                        await ws.send_str(dumps(latest_state))
                 
     except asyncio.CancelledError:
         await asyncio.gather(*[ws.close(code=WSCloseCode.GOING_AWAY, message='Server shutdown') for ws in websockets])

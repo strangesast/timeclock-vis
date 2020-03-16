@@ -4,7 +4,7 @@ import * as Comlink from 'comlink';
 import { switchMap, map, throttleTime } from 'rxjs/operators';
 import { socket } from './socket';
 
-import { Employee, ShiftComponent, Shift, ShiftComponentType, EmployeeShiftColor, ShiftState } from './models';
+import { Employee, ShiftComponent, Shift, ShiftComponentType, EmployeeShiftColor, ShiftState } from 'timeclock-vis_models';
 import { employeeColorScale, formatDuration, formatTime, formatDateWeekday } from './util';
 import * as constants from './constants';
 
@@ -131,7 +131,7 @@ async function byTime(date: Date) {
       )
   }
   function draw({shifts, employees}:{shifts: Shift[], employees: {[id: string]: Employee}}, [w, h]: [number, number]) {
-    body.select('svg').attr('width', w).attr('height', h).select('g.shifts').raise().selectAll('g.shift').data(shifts, d => d['_id']).join(
+    body.select('svg').attr('width', w).attr('height', h).select('g.shifts').raise().selectAll('g.shift').data(shifts, d => d['id']).join(
       enter => enter.append('g').classed('shift time', true).attr('transform', d => `translate(0,${d.y})`)
         .call(s => s.append('g').classed('text', true).attr('transform', d => `translate(${d.x},${-constants.ROW_TEXT_HEIGHT})`)
           .call(s => s.append('text').classed('name', true).text(d => formatName(employees[d.employee])))
@@ -312,7 +312,7 @@ function byEmployee(employeeId: string, date = new Date()) {
   }
 
   function draw({shifts, employees}: {shifts: Shift[], employees: {[id: string]: Employee}}, [w, h]: number[]) {
-    svg.attr('width', w).attr('height', h).select('g.shifts').raise().selectAll('g.shift').data(shifts, d => d['_id']).join(
+    svg.attr('width', w).attr('height', h).select('g.shifts').raise().selectAll('g.shift').data(shifts, d => d['id']).join(
       enter => enter.append('g').classed('shift employee', true)
         .attr('transform', d => `translate(0,${d.y})`)
         .call(s => s.append('g').classed('text', true)

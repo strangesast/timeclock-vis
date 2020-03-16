@@ -4,7 +4,7 @@ import { Observable, BehaviorSubject, timer } from 'rxjs';
 import { switchMap, filter, map, scan, startWith, audit, auditTime, throttleTime } from 'rxjs/operators';
 
 import { formatName, formatDuration, formatDateWeekday, formatTime, inFieldOfView, throttle, employeeColorScale, debounce } from './util';
-import { ShiftState, Shift, Employee, EmployeeShiftColor, ShiftComponent, ShiftComponentType, EmployeeID, TranslateExtent } from './models';
+import { ShiftState, Shift, Employee, EmployeeShiftColor, ShiftComponent, ShiftComponentType, EmployeeID, TranslateExtent } from 'timeclock-vis_models';
 import * as constants from './constants';
 
 declare const GENERATE_MOCKING: boolean;
@@ -66,6 +66,7 @@ function byTime([minDate, maxDate], now = new Date()) {
   svg.call(zoom = d3.zoom()
     .translateExtent(defaultExtent)
     .scaleExtent([.4, 100])
+    // .filter(() => d3.event.ctrlKey)
     .on('zoom', zoomed)
   )
   //  .on('wheel.zoom', () => {
@@ -110,7 +111,6 @@ function byTime([minDate, maxDate], now = new Date()) {
       draw(shifts, employeeIds, employees)
     });
 
-  drawAxis();
 
   let i = 0; // ugly hack for i > 0 redraws (due to zooming)
   const axisLabelHeight = 30;
@@ -121,6 +121,12 @@ function byTime([minDate, maxDate], now = new Date()) {
 
     shifts.forEach(shift => updatePositions(shift, employees));
 
+    // const [minRow, maxRow] = d3.extent(shifts, shift => shift.row);
+    const maxRow = 11;
+    svg.attr('height', maxRow * constants.ROW_STEP + margin.top + axisLabelHeight + margin.bottom);
+    updateSize();
+    drawAxis();
+
     const t = d3.transition().duration(500);
 
     const [a, b] = lastDomain.map(d => xScale(d));
@@ -128,7 +134,7 @@ function byTime([minDate, maxDate], now = new Date()) {
 
     if (i == 0) {
       i = 1;
-      svg.select('g.shifts').selectAll<SVGElement, Shift>('g.shift').data(shifts, d => d._id)
+      svg.select('g.shifts').selectAll<SVGElement, Shift>('g.shift').data(shifts, d => d.id)
         .join(
           enter => enter.append('g')
             .call(drawShift, employees)
@@ -184,7 +190,7 @@ function byTime([minDate, maxDate], now = new Date()) {
           byEmployee(employees[d.employee], d.start);
         });
     } else {
-      svg.select('g.shifts').selectAll<SVGElement, Shift>('g.shift').data(shifts, d => d._id)
+      svg.select('g.shifts').selectAll<SVGElement, Shift>('g.shift').data(shifts, d => d.id)
         .join(
           enter => enter.append('g')
             .call(drawShift, employees)
@@ -237,7 +243,7 @@ function byTime([minDate, maxDate], now = new Date()) {
       const index = comp.type == ShiftComponentType.Projected ? 1 : 0;
       comp.fill = d3.color(employeeColorScale(employees[shift.employee]['Color'].toString())[index]);
       comp.x = xScale(comp.start);
-      comp.w = Math.max(xScale(comp.end) - comp.x, 0);
+      comp.w = Math.max(xScale(comp.end || new Date()) - comp.x, 0);
     }
     shift.y = shift.row * constants.ROW_STEP + margin.top + axisLabelHeight;
     const [a, b] = [shift.start, shift.end || now].map(xScale);
@@ -401,7 +407,7 @@ function byEmployee(employee: Employee, centerDate: Date) {
       .call(s => s.select('path').remove())
       .call(s => s.selectAll('.tick').select('line').remove());
 
-    svg.select('g.shifts').selectAll<SVGElement, Shift>('g.shift').data(shifts, d => d._id).join(
+    svg.select('g.shifts').selectAll<SVGElement, Shift>('g.shift').data(shifts, d => d.id).join(
       enter => enter.append('g')
         .each(shift => updatePositions(shift, employees))
         .call(drawShift, {[employee.id]: employee})
@@ -587,13 +593,12 @@ function drawShift(sel, employees) {
   return sel.classed('shift', true)
     .call(s => s.append('g').classed('text', true)
       .call(s => s.append('text').classed('name', true).text(d => formatName(employees[d.employee])))
-      .filter(d => d.started)
       .call(s => s.append('g').classed('duration', true)
         .each(function (d) {
           const dx = (this.previousSibling as SVGGraphicsElement).getBBox().width + 4;
           d3.select(this)
             .attr('transform', `translate(${dx},0)`)
-            .call(drawMiniPie, d.duration / d.expectedDuration, d.employeeColor);
+            .call(drawMiniPie, d.duration / d.expectedDuration, employees[d.employee].Color);
         })
         .call(s => s.append('text')
           .attr('x', 24)
@@ -616,7 +621,7 @@ function drawShift(sel, employees) {
           .attr('text-anchor', 'end')
           .attr('alignment-baseline', 'middle')
           .attr('y', constants.RECT_HEIGHT / 2)
-          .text(d => formatTime(d.end))
+          .text(d => formatTime(d.end || new Date()))
         )
       )
       .each(function (d) {
@@ -726,7 +731,7 @@ function calculateNorms(shift: Shift) {
     date.setDate(1 + offset);
     comp.startNorm = date;
 
-    date = new Date(comp.end);
+    date = new Date(comp.end || new Date());
     offset = d3.timeDay.count(first, date);
     date.setFullYear(2000);
     date.setMonth(0)

@@ -8,6 +8,10 @@
   },
   "dependencies": {
     "@angular/cdk": "^9.1.0",
-    "d3": "^5.15.0"
+    "d3": "^5.15.0",
+    "faker": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/d3": "^5.7.2"
   }
 }

@@ -1,7 +1,7 @@
 import * as Comlink from 'comlink';
 import { formatTime, addHours, inFieldOfView } from './util';
 import { Long, serialize, deserialize } from 'bson';
-import * as models from './models';
+import * as models from 'timeclock-vis_models';
 
 
 declare const GENERATE_MOCKING: boolean;
@@ -10,7 +10,7 @@ let obj: models.Sig;
 
 if (GENERATE_MOCKING) {
   let data = null;
-  const mocking = require('./mocking');
+  const mocking = require('timeclock-vis_mocking');
 
   obj = {
     type: 'mocking',

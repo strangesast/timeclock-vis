@@ -1,5 +1,5 @@
 import * as d3 from 'd3';
-import * as models from './models';
+import * as models from 'timeclock-vis_models';
 import * as faker from 'faker';
 
 export function generateData(now = new Date(), fuzzy = 30): {shifts: models.Shift[], employees: {[id: string]: models.Employee}} {

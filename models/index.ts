@@ -1,3 +1,5 @@
+import {Color} from 'd3';
+
 interface MongoObject {
   _id: string;
 }
@@ -43,7 +45,7 @@ interface BaseShiftComponent extends MongoObject {
   id?: string;
   x: number;
   w: number;
-  fill: d3.Color;
+  fill: Color;
   start: Date;
   end: Date;
   startNorm?: Date;
