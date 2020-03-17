@@ -1,7 +1,7 @@
 import * as d3 from 'd3';
 import { Subject } from 'rxjs';
 import * as Comlink from 'comlink';
-import { switchMap, map, throttleTime } from 'rxjs/operators';
+import { switchMap, tap, map, throttleTime } from 'rxjs/operators';
 import { socket } from './socket';
 
 import { Employee, ShiftComponent, Shift, ShiftComponentType, EmployeeShiftColor, ShiftState } from './models';
@@ -69,23 +69,23 @@ async function byTime(date: Date) {
   body.select('header').select('button')
     .on('click', d => {
       window.scrollTo({...args, left: xScale(now) - width / 2, behavior: 'smooth'});
-    })
+    });
 
   if (body.select('svg').select('g.shifts').empty()) {
     body.select('svg').append('g').classed('shifts', true);
   }
   svg.attr('width', totalWidth).attr('height', height);
 
-  const redraw = new Subject();
-  redraw.pipe(
+  const subject = new Subject();
+  const sub = subject.pipe(
     throttleTime(100),
     map(([x0, w]) => [xScale.invert(x0), xScale.invert(x0 + w)]),
     switchMap(domain => worker.getShiftsInRange(domain)),
-  ).subscribe((data: any) => {
-    const dim: [number, number] = [totalWidth, contentHeight];
-    data.shifts.forEach(shift => updatePositions(shift, data.employees));
-    draw(data, dim);
-  });
+    tap((data: any) => {
+      data.shifts.forEach(shift => updatePositions(shift, data.employees));
+    }),
+    map((data, i) => draw(data)),
+  ).subscribe();
 
   const updatePositions = (shift: Shift, employees: {[id: string]: Employee}) => {
     for (const comp of shift.components) {
@@ -103,76 +103,58 @@ async function byTime(date: Date) {
     return shift;
   }
 
-  function drawShift(s, employees) {
-    return s.classed('shift time', true).attr('transform', d => `translate(0,${d.y})`)
-      .call(s => s.append('g').classed('text', true).attr('transform', d => `translate(${d.x},${-constants.ROW_TEXT_HEIGHT})`)
-        .call(s => s.append('text').classed('name', true).text(d => formatName(employees[d.employee])))
-        .each(function (d) {
-          const s = d3.select(this);
-          const dx = (this.firstChild as SVGGraphicsElement).getBBox().width + 4;
-          const frac = d.duration / d.expectedDuration;
-          s.append('g').classed('duration', true)
-            .attr('transform', `translate(${dx},0)`)
-            .call(drawMiniPie, frac, employees[d.employee].color)
-            .call(s => s.append('text').attr('y', 0).attr('x', 24).text(formatDuration(d.duration)))
-        })
+  function draw({shifts, employees}: {shifts: Shift[], employees: {[id: string]: Employee}}) {
+    body.select('svg')
+      .attr('width', totalWidth)
+      .attr('height', contentHeight)
+      .select('g.shifts').raise()
+      .selectAll('g.shift')
+      .data(shifts, d => d['id'])
+      .join(enter => enter.append('g').classed('shift', true)
+        .call(s => s.append('g').classed('shift-text', true)
+          .call(s => s.append('text').classed('name', true))
+          .call(s => s.append('g').classed('duration', true).append('text')
+            .attr('y', 5)
+            .attr('x', 24)
+          )
+        )
       )
-      .call(s => s.selectAll('g.component').data(d => d.components).enter()
-        .append('g').classed('component', true)
-        .attr('transform', d => `translate(${d.x},0)`)
-        .call(s => s.append('title').text(d => `${formatTime(d.start)}-${formatTime(d.end || new Date())}`))
-        .call(s => s.append('rect')
-          .attr('rx', 8)
-          .attr('ry', 8)
-          .attr('width', d => d.w)
-          .attr('height', constants.RECT_HEIGHT)
-          .attr('fill', d => d.fill.toString()))
-        .each(filterShiftComponentTimeVisibility)
-      )
-  }
-  function draw({shifts, employees}:{shifts: Shift[], employees: {[id: string]: Employee}}, [w, h]: [number, number]) {
-    body.select('svg').attr('width', w).attr('height', h).select('g.shifts').raise().selectAll('g.shift').data(shifts, d => d['_id']).join(
-      enter => enter.append('g').classed('shift time', true).attr('transform', d => `translate(0,${d.y})`)
-        .call(s => s.append('g').classed('text', true).attr('transform', d => `translate(${d.x},${-constants.ROW_TEXT_HEIGHT})`)
-          .call(s => s.append('text').classed('name', true).text(d => formatName(employees[d.employee])))
+      .attr('transform', d => `translate(0,${d.y})`)
+      .call(s => s.select('g.shift-text').attr('transform', d => `translate(${d.x},${-constants.ROW_TEXT_HEIGHT})`)
+          .call(s => s.select('text.name').text(d => formatName(employees[d.employee])))
           .each(function (d) {
             const s = d3.select(this);
-            const dx = (this.firstChild as SVGGraphicsElement).getBBox().width + 4;
+            const dx = ((this as any).firstChild as SVGGraphicsElement).getBBox().width + 4;
             const frac = d.duration / d.expectedDuration;
-            s.append('g').classed('duration', true)
+            s.select('g.duration')
               .attr('transform', `translate(${dx},0)`)
               .call(drawMiniPie, frac, employees[d.employee].Color)
-              .call(s => s.append('text').attr('y', 5).attr('x', 24).text(formatDuration(d.duration)))
+              .call(s => s.select('text').text(formatDuration(d.duration)))
           })
-        )
-        .call(s => s.selectAll('g.component').data(d => d.components).enter()
-          .append('g').classed('component', true)
-          .attr('transform', d => `translate(${d.x},0)`)
-          .call(s => s.append('title').text(d => `${formatTime(d.start)}-${formatTime(d.end || new Date())}`))
+      )
+      .call(s => s.selectAll('g.component').data(d => d.components)
+        .join(enter => enter.append('g').classed('component', true)
+          .call(s => s.append('title'))
           .call(s => s.append('rect')
             .attr('rx', 8)
             .attr('ry', 8)
-            .attr('width', d => d.w)
-            .attr('height', constants.RECT_HEIGHT)
-            .attr('fill', d => d.fill.toString()))
-          .each(filterShiftComponentTimeVisibility)
-        ).on('click', d => {
-          cleanup();
-          byEmployee(d.employee, d.start);
-        }),
-      update => update,
-      exit => exit.remove(),
-    )
-      .call(s =>
-        s.filter(d => d.state == ShiftState.Incomplete).selectAll('g.component').data(d => d.components).join(
-          enter => enter.append('g').classed('component', true),
-          update => update,
-          exit => exit.remove()
-        ).attr('transform', d => `translate(${d.x},0)`)
+            .attr('height', constants.RECT_HEIGHT))
+        )
+        .attr('transform', d => `translate(${d.x},0)`)
+        .call(s => s.select('title').text(d => `${formatTime(d.start)}-${formatTime(d.end || new Date())}`))
+        .call(s => s.select('rect')
+          .attr('width', d => d.w)
+          .attr('fill', d => d.fill.toString())
+        )
+        .each(filterShiftComponentTimeVisibility)
       )
+      .on('click', d => {
+        cleanup();
+        byEmployee(d.employee, d.start);
+      });
   }
 
-  const onScroll = () => redraw.next([window.scrollX, window.innerWidth]);
+  const onScroll = () => subject.next([window.scrollX, window.innerWidth]);
   const onBeforeUnload = () => window.scrollTo(args);
 
   window.addEventListener('scroll', onScroll);
@@ -187,6 +169,7 @@ async function byTime(date: Date) {
     svg.select('g.axis.date').remove()
     window.removeEventListener('scroll', onScroll);
     window.removeEventListener('beforeunload', onBeforeUnload);
+    sub.unsubscribe();
   };
 
   function drawTopAxis(sel, scale, h) {
@@ -259,6 +242,7 @@ function byEmployee(employeeId: string, date = new Date()) {
 
   const svg = body.select('svg');
   svg.attr('width', width).attr('height', totalHeight);
+  svg.select('g.shifts').raise();
 
   if (svg.select('g.axis.left').empty()) {
     svg.append('g').classed('axis left', true);
@@ -277,26 +261,27 @@ function byEmployee(employeeId: string, date = new Date()) {
     body.select('svg').append('g').classed('shifts', true);
   }
 
-  const redraw = new Subject();
-  redraw.pipe(
+  const subject = new Subject();
+  const sub = subject.pipe(
     throttleTime(100),
     map(([y0, h]) => [yScale.invert(y0), yScale.invert(y0 + h)]),
     switchMap(domain => worker.getShiftsByEmployeeInRange(employeeId, domain)),
-  ).subscribe((data: any) => {
-    const [minTime, maxTime] = d3.extent(data.shifts
-      .reduce((acc, s) => {
-        calculateNorms(s);
-        for (const comp of s.components) {
-          acc.push(comp.startNorm);
-          acc.push(comp.endNorm);
-        }
-        return acc;
-      }, [] as Date[])) as [Date, Date];
-    xScale.domain([minTime, maxTime]);
+    map((data: any, index) => {
+      const [minTime, maxTime] = d3.extent(data.shifts
+        .reduce((acc, s) => {
+          calculateNorms(s);
+          for (const comp of s.components) {
+            acc.push(comp.startNorm);
+            acc.push(comp.endNorm);
+          }
+          return acc;
+        }, [] as Date[])) as [Date, Date];
+      xScale.domain([minTime, maxTime]);
 
-    data.shifts.forEach(updatePositions);
-    draw(data, dim);
-  });
+      data.shifts.forEach(shift => updatePositions(shift, data.employees));
+      draw(data);
+    }),
+  ).subscribe()
 
   const updatePositions = (shift: Shift, employees: {[id: string]: Employee}) => {
     calculateNorms(shift);
@@ -311,49 +296,55 @@ function byEmployee(employeeId: string, date = new Date()) {
     return shift;
   }
 
-  function draw({shifts, employees}: {shifts: Shift[], employees: {[id: string]: Employee}}, [w, h]: number[]) {
-    svg.attr('width', w).attr('height', h).select('g.shifts').raise().selectAll('g.shift').data(shifts, d => d['_id']).join(
-      enter => enter.append('g').classed('shift employee', true)
-        .attr('transform', d => `translate(0,${d.y})`)
-        .call(s => s.append('g').classed('text', true)
-          .attr('transform', d => `translate(${d.x},${-constants.ROW_TEXT_HEIGHT})`)
-          .call(s => s.append('text').classed('name', true).text(d => formatDateWeekday(d.start)))
-          .each(function (d) {
-            const s = d3.select(this);
-            const dx = (this.firstChild as SVGGraphicsElement).getBBox().width + 4;
-            s.append('g').classed('duration', true)
+  function draw({shifts, employees}: {shifts: Shift[], employees: {[id: string]: Employee}}) {
+    svg.select('g.shifts')
+      .selectAll('g.shift')
+      .data(shifts, d => d['id'])
+      .join(enter => enter.append('g').classed('shift', true)
+        .call(s => s.append('g').classed('shift-text', true)
+          .call(s => s.append('text').classed('name', true))
+          .call(s => s.append('g').classed('duration', true).append('text')
+            .attr('y', 5)
+            .attr('x', 24)
+          )
+        )
+      )
+      .attr('transform', d => `translate(0,${d.y})`)
+      .each(function (d) {
+        const s = d3.select(this);
+        // const dx = ((this as any).firstChild as SVGGraphicsElement).getBBox().width + 4;
+        s.select('g.shift-text')
+          .attr('transform', `translate(${d.x},${-constants.ROW_TEXT_HEIGHT})`)
+          .call(s => s.select('text.name').text(formatDateWeekday(d.start)))
+          .call(s => {
+            const dx = s.select<SVGGraphicsElement>('g.shift-text > .name').node().getBBox().width + 4;
+            s.select('g.duration')
               .attr('transform', `translate(${dx},0)`)
               .call(drawMiniPie, d.duration / d.expectedDuration, employees[d.employee].Color)
-              .call(s => s.append('text').attr('y', 5).attr('x', 24).text(formatDuration(d.duration)))
-          })
-        )
-        .call(s => s.selectAll('g.component').data(d => d.components).enter()
-          .append('g').classed('component', true)
-          .attr('transform', d => `translate(${d.x},0)`)
-          .call(s => s.append('title').text(d => `${formatTime(d.start)}-${formatTime(d.end || new Date())}`))
+              .call(s => s.select('text').text(formatDuration(d.duration)))
+          });
+      })
+      .call(s => s.selectAll('g.component').data(d => d.components).join(
+        enter => enter.append('g').classed('component', true)
+          .call(s => s.append('title'))
           .call(s => s.append('rect')
             .attr('rx', 8)
             .attr('ry', 8)
-            .attr('width', d => d.w)
             .attr('height', constants.RECT_HEIGHT)
-            .attr('fill', d => d.fill.toString()))
-          .each(filterShiftComponentTimeVisibility)
-        ).on('click', d => {
-          cleanup();
-          byTime(d.start);
-        }),
-      update => update
-        .call(s => s.select('g.text').attr('transform', d => `translate(${d.x},${-constants.ROW_TEXT_HEIGHT})`))
-        .call(s => s.selectAll('g.component').data(d => d.components)
-          .attr('transform', d => `translate(${d.x},0)`)
-          .call(s => s.select('title').text(d => `${formatTime(d.start)}-${formatTime(d.end || new Date())}`))
-          .call(s => s.select('rect').attr('width', d => d.w))
-          .each(filterShiftComponentTimeVisibility)),
-      exit => exit.remove(),
-    )
+          ),
+        )
+        .attr('transform', d => `translate(${d.x},0)`)
+        .call(s => s.select('title').text(d => `${formatTime(d.start)}-${formatTime(d.end || new Date())}`))
+        .call(s => s.select('rect').attr('width', d => d.w).attr('fill', d => d.fill.toString()))
+        .each(filterShiftComponentTimeVisibility)
+      )
+      .on('click', d => {
+        cleanup();
+        byTime(d.start);
+      });
   }
 
-  const onScroll = () => redraw.next([window.scrollY, window.innerHeight]);
+  const onScroll = () => subject.next([window.scrollY, window.innerHeight]);
   const onBeforeUnload = () => window.scrollTo(args);
 
   window.addEventListener('scroll', onScroll);
@@ -366,6 +357,7 @@ function byEmployee(employeeId: string, date = new Date()) {
     svg.select('g.axis.left').remove();
     window.removeEventListener('scroll', onScroll);
     window.removeEventListener('beforeunload', onBeforeUnload);
+    sub.unsubscribe();
   };
 }
 
