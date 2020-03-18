@@ -1,7 +1,7 @@
 import * as d3 from 'd3';
 import * as Comlink from 'comlink';
 
-import { Employee } from 'timeclock-vis_models';
+import { Employee } from './models';
 import { colors, Shift, ShiftState, throttle, debounce, addHours, formatTime, centerOnDate } from './util';
 
 const worker = Comlink.wrap(new Worker('./data.worker.ts', { type: 'module' })) as any;

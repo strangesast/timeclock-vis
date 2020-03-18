@@ -1,6 +1,6 @@
 declare const GENERATE_MOCKING: boolean;
 import * as d3 from 'd3';
-import { Employee, GraphDataResponse } from 'timeclock-vis_models';
+import { Employee, GraphDataResponse } from './models';
 import { formatName } from './util';
 import * as Comlink from 'comlink';
 

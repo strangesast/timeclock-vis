@@ -1,6 +1,7 @@
 import * as Comlink from 'comlink';
 import { formatTime, addHours, inFieldOfView } from './util';
 import { Long, serialize, deserialize } from 'bson';
+import * as models from './models';
 
 
 declare const GENERATE_MOCKING: boolean;
@@ -9,7 +10,7 @@ let obj: models.Sig;
 
 if (GENERATE_MOCKING) {
   let data = null;
-  const mocking = require('./models');
+  const mocking = require('./mocking');
 
   obj = {
     type: 'mocking',

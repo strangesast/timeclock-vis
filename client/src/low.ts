@@ -4,7 +4,7 @@ import * as Comlink from 'comlink';
 import { switchMap, tap, map, throttleTime } from 'rxjs/operators';
 import { socket } from './socket';
 
-import { Employee, ShiftComponent, Shift, ShiftComponentType, EmployeeShiftColor, ShiftState } from 'timeclock-vis_models';
+import { Employee, ShiftComponent, Shift, ShiftComponentType, EmployeeShiftColor, ShiftState } from './models';
 import { employeeColorScale, formatDuration, formatTime, formatDateWeekday } from './util';
 import * as constants from './constants';
 

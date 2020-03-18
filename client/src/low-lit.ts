@@ -5,7 +5,7 @@ import { switchMap, map, throttleTime } from 'rxjs/operators';
 import * as Comlink from 'comlink';
 import * as d3 from 'd3';
 
-import { Employee, ShiftComponent, Shift, ShiftComponentType, EmployeeShiftColor } from 'timeclock-vis_models';
+import { Employee, ShiftComponent, Shift, ShiftComponentType, EmployeeShiftColor } from './models';
 import { employeeColorScale, formatDuration, formatTime, formatDateWeekday } from './util';
 
 declare const GENERATE_MOCKING: boolean;

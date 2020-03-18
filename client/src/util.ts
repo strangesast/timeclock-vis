@@ -1,5 +1,5 @@
 import * as d3 from 'd3';
-import { Employee } from 'timeclock-vis_models';
+import { Employee } from './models';
 const LOCALE = 'en';
 
 export const employeeColorScale = (function() {
