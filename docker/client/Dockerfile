@@ -9,7 +9,7 @@ from nginx
 workdir /usr/share/nginx/html
 copy client/static ./static
 copy --from=build /app/dist ./
-copy client/nginx.conf /etc/nginx/nginx.conf
+copy nginx.conf /etc/nginx/nginx.conf
 expose 8080
 volume /var/log/nginx/log
 cmd ["nginx", "-g", "daemon off;"]
