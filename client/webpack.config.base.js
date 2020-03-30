@@ -12,6 +12,7 @@ module.exports = {
     low: './src/low.ts',
     index: './src/index.ts',
     graph: './src/graph.ts',
+    weekly: './src/weekly.ts',
     next: './src/next.ts',
     simple: './src/simple.ts',
     concept: './src/concept.ts',
@@ -37,6 +38,12 @@ module.exports = {
       chunks: ['vendor', 'graph'],
       template: 'src/graph.html',
       filename: 'graph.html',
+    }),
+    new HtmlWebpackPlugin({
+      title: 'Weekly',
+      chunks: ['vendor', 'weekly'],
+      template: 'src/weekly.html',
+      filename: 'weekly.html',
     }),
     new HtmlWebpackPlugin({
       title: 'Next',
