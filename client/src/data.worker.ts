@@ -139,6 +139,25 @@ if (GENERATE_MOCKING) {
       data = data.sort((a, b) => b.total - a.total);
       return {data, employees, columns};
     },
+    async getWeeklyGraphData([minDate, maxDate]: models.DateRange) {
+      const url = new URL(`/data/weekly`, location.origin);
+      url.searchParams.set('minDate', minDate.toISOString());
+      url.searchParams.set('maxDate', maxDate.toISOString());
+      const res = await fetch(url.toString(), {headers: {'Accept': 'application/bson'}});
+      if (res.status < 200 || res.status >= 400) {
+        throw new Error(`failed to fetch weekly graph data: ${res.statusText}`);
+      }
+      let content;
+      if (res.headers.has('Content-Type') && res.headers.get('Content-Type') === 'application/bson') {
+        let buf = await res.arrayBuffer();
+        buf = new Uint8Array(buf)
+        content = deserialize(buf);
+      } else {
+        content = await res.json();
+        interpretResponse(content);
+      }
+      return content;
+    },
   }
 }
 

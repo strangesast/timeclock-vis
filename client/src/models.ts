@@ -93,6 +93,7 @@ interface SigBase {
   getShiftsInRange: (range: DateRange) => Promise<ShiftsResponse>;
   getShiftsByEmployeeInRange: (employeeId: EmployeeID, range: DateRange) => Promise<ShiftsResponse>;
   getGraphData: (range?: DateRange) => Promise<GraphDataResponse>;
+  getWeeklyGraphData?: (range?: DateRange) => Promise<any>;
 }
 
 interface Map<T> {

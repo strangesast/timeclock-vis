@@ -1,10 +1,12 @@
 import * as d3 from 'd3';
 import { fromEvent } from 'rxjs';
 import { map, throttleTime } from 'rxjs/operators';
+import * as Comlink from 'comlink';
+
+const worker = Comlink.wrap(new Worker('./data.worker.ts', { type: 'module' })) as any;
+
 
 const svg = d3.select(document.body).append('svg');
-
-
 
 const weekRows = 52; // how many rows to show initially;
 const weekRowHeight = 80; // px
@@ -53,3 +55,11 @@ for (let i = -52; i < bottomPadding / weekRowStep; i++) {
   const id = date.toISOString().slice(0, 10);
   data.push({date, id});
 }
+
+
+(async function() {
+  const minDate = d3.timeWeek.offset(d3.timeWeek.floor(new Date()), -2);
+  const content = await worker.getWeeklyGraphData([minDate, d3.timeWeek.offset(minDate, 1)]);
+  // d3.group(data, d => dkj:t
+  console.log('data', content);
+})();

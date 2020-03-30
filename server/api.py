@@ -6,13 +6,13 @@ import time
 import pymongo
 import configparser
 from aiohttp import web
-from datetime import datetime
+from datetime import datetime, timedelta
 import bson
 from bson.json_util import dumps
 from aiojobs.aiohttp import setup, spawn
 
 from util import get_mongo_db
-from graph import get_graph_data
+from graph import get_graph_data, get_weekly_graph_data
 
 
 routes = web.RouteTableDef()
@@ -30,10 +30,35 @@ async def recheck(request):
 
 
 @routes.get('/data/graph')
-async def recheck(request):
+async def get_graph(request):
     db = request.app['db'].timeclock;
     res = await get_graph_data(db)
     return web.Response(text=dumps(res))
+
+
+@routes.get('/data/weekly')
+async def get_weekly_graph(request: web.Request):
+    q = parse_qs(request.query)
+    min_date, max_date = q.get('minDate'), q.get('maxDate')
+
+    _range = [min_date, max_date or (datetime.now() + timedelta(hours=24))] if min_date is not None else None
+    db = request.app['db'].timeclock;
+    obj = await get_weekly_graph_data(db, _range)
+    obj = {'data': obj, 'minDate': min_date, 'maxDate': max_date}
+
+    if 'application/bson' in request.headers.get('accept'):
+        resp = web.StreamResponse()
+        resp.content_type = 'application/bson'
+        await resp.prepare(request) 
+        buf = bson.encode(obj)
+        resp.content_length = len(buf)
+        await resp.write(buf)
+    else:
+        resp = web.Response(text=dumps(obj))
+        resp.content_type = 'text/plain'
+
+    return resp
+
 
 SHIFTS_PIPELINE = [
     {'$unwind': '$components'},
