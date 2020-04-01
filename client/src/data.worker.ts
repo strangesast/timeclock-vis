@@ -1,4 +1,5 @@
 import * as Comlink from 'comlink';
+import * as d3 from 'd3';
 import { formatTime, addHours, inFieldOfView } from './util';
 import { Long, serialize, deserialize } from 'bson';
 import * as models from './models';
@@ -84,6 +85,38 @@ if (GENERATE_MOCKING) {
         }
       }
       return {employees: employeesList, data: graphData, columns};
+    },
+    async getWeeklyGraphData([minDate, maxDate]: models.DateRange) {
+      const now = obj.type == 'mocking' ? obj.now : new Date();
+      const {shifts, employees} = data as {shifts: models.Shift[], employees: {[id: string]: models.Employee}};
+      const [minWeek, maxWeek] = [d3.timeWeek.floor(minDate), d3.timeWeek.offset(d3.timeWeek.floor(maxDate), 1)];
+
+      const filteredShifts = shifts.filter(d => (d.start > minWeek && d.start < maxWeek)
+        || (d.end > minWeek && d.end < maxWeek)
+        || (d.end < minWeek && d.start > maxWeek)).sort((a, b) => a.start > b.start ? 1 : -1);
+
+      const buckets = [];
+      const active = [];
+      for (const date of d3.timeMinute.every(30).range(minWeek, maxWeek)) {
+        for (let j = 0; j < active.length;) {
+          if (active[j].end < date) {
+            active.splice(j, 1);
+          }
+          j++;
+        }
+        for (let i = 0; i < filteredShifts.length;) {
+          const shift = filteredShifts[i];
+          if (shift.start < date) {
+            const arr = filteredShifts.splice(i, 1);
+            if (shift.end > date) {
+              active.push(...arr);
+            }
+          }
+          i++;
+        }
+        buckets.push({date, count: active.length}); // could also include active items
+      }
+      return buckets;
     }
   };
 } else {
