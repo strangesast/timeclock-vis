@@ -14,16 +14,11 @@ const weekRows = 52; // how many rows to show initially;
 const weekRowHeight = 80; // px
 const weekRowStep = 100; // px
 
+const margin = {top: 80, right: 40, left: 40, bottom: 80};
 const {innerWidth: width, innerHeight: height} = window;
-console.log(width, height);
-// go back 52 
-
 const bottomPadding = Math.ceil((height / 2 - weekRowStep / 2) / weekRowStep) * weekRowStep;
 
 const totalHeight = weekRowStep * weekRows + bottomPadding;
-// page height
-//
-
 
 const now = new Date();
 const week = d3.timeWeek.floor(now);
@@ -44,14 +39,20 @@ fromEvent(window, 'scroll').pipe(
   map(items => group(items as any[], d => d3.timeWeek.floor(d.date).toISOString().slice(0, 10))),
 ).subscribe((filteredData: Map<string, any[]>) => {
 
+  const a = d3.timeWeek.floor(new Date());
+  const b = d3.timeMinute.offset(d3.timeWeek.offset(a, 1), 15);
+  const domain = d3.timeMinute.every(15).range(a, b).map((d, i) => ((d.getDay() * 24 * 60 + d.getHours() * 60 + d.getMinutes()) / 15).toString());
+  console.log(domain);
   const bandScale = d3.scaleBand()
-    .domain(Array.from(Array(d3.max(Array.from(filteredData.values() as any), (d: any) => d.length))).map((_, i) => i.toString()))
-    .range([0, width])
+    .domain(domain)
+    .range([margin.left, width - margin.right])
     .padding(0.1);
-  const xScale = d3.scaleLinear().domain([0, d3.max(Array.from(filteredData.values()).reduce((a, b) => a.concat(b), []), (d: any) => d.count)]).range([0, weekRowHeight]);
+
+  // const maxCount = d3.max(Array.from(filteredData.values()).reduce((a, b) => a.concat(b), []), (d: any) => d.count)
+  const xScale = d3.scaleLinear().domain([0, 10]).range([0, weekRowHeight]);
 
   const data = Array.from(filteredData.entries())
-  svg.selectAll('g').data(data).join(
+  svg.selectAll('g').data(data, ([key, value]) => key).join(
     enter => enter.append('g')
       // .call(s => s.append('rect').attr('height', weekRowHeight).attr('width', 400))
       .attr('transform', ([key, value]) => `translate(0,${yScale(new Date(key))})`)
@@ -59,13 +60,16 @@ fromEvent(window, 'scroll').pipe(
     , exit => exit.remove(),
   )
     .selectAll('rect')
-    .data(([key, value]) => value)
+    .data(([key, value]) => value, (d: any) => d.date.toISOString())
     .join(
       enter => enter.append('rect')
-        .attr('x', (d: any, i) => bandScale(i.toString()))
-        .attr('y', (d: any) => xScale(d.count))
-        .attr('height', (d: any) => weekRowHeight - xScale(d.count))
-        .attr('width', bandScale.bandwidth()),
+        .attr('x', (d: any, i) => {
+          const v = ((d.date.getDay() * 24 * 60 + d.date.getHours() * 60 + d.date.getMinutes()) / 15).toString();
+          return bandScale(v);
+        })
+        .attr('height', (d: any) => xScale(d.count))
+        .attr('y', (d: any) => weekRowHeight - xScale(d.count))
+        .attr('width', bandScale.bandwidth()).on('mouseenter', d => console.log(d)),
       update => update,
       exit => exit.remove(),
     )

@@ -187,9 +187,11 @@ if (GENERATE_MOCKING) {
         content = deserialize(buf);
       } else {
         content = await res.json();
-        interpretResponse(content);
       }
-      return content;
+      if (!('data' in content)) {
+        throw new Error('invalid weekly graph data response');
+      }
+      return content.data;
     },
   }
 }

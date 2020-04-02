@@ -64,47 +64,25 @@ async def get_graph_data(mongo_db: AsyncIOMotorDatabase) -> GraphDataResponse:
 
 
 async def get_weekly_graph_data(mongo_db: AsyncIOMotorDatabase, _range = None):
-    frac = 2 # half hour
-    l = 48 * frac
-    buckets = [v * 60 / frac * 60 for v in range(l)]
-    buckets = list(zip(buckets[0:-1], buckets[1:]))
-    pairs = list(zip(map(str, range(0, l)), map(str, range(int(l/2), l))))
-    buckets = [{'$cond': {'if': {'$and': [{'$lte': ['$start', b[0]]}, {'$gt': ['$end', b[1]]}]}, 'then': str(i % int(24 * frac)), 'else': None}}
-            for i, b in enumerate(buckets)]
+    interval = 60 / 4
 
     pipeline = [
-        {'$match': {'end': {'$ne': None}}},
-        {'$addFields': {
-            'startDate': '$start',
-            'start': {'$dateToParts': {'date': '$start', 'timezone': 'America/New_York'}},
-            'end': {'$dateToParts': {'date': '$end', 'timezone': 'America/New_York'}},
-        }},
-        {'$addFields': {
-            'start': {'$sum': ['$start.second', {'$multiply': ['$start.minute', 60]}, {'$multiply': ['$start.hour', 3600]}]},
-            'end': {'$sum': ['$end.second', {'$multiply': ['$end.minute', 60]}, {'$multiply': ['$end.hour', 3600]}]},
-        }},
-        {'$addFields': {
-            'end': {'$cond': {'if': {'$gte': ['$start', '$end']}, 'then': {'$sum': ['$end', 8.64e4]}, 'else': '$end'}}
-        }},
-        {'$addFields': {'buckets': buckets}},
-        {'$addFields': {'buckets': {'$filter': {'input': '$buckets', 'cond': {'$ne': ['$$this', None]}}}}},
-        {'$unwind': '$buckets'},
-        {'$addFields': {
-            'startDate': {'$dateToParts': {'date': '$startDate', 'timezone': 'America/New_York'}},
-        }},
-        {'$addFields': {
-            'startDate.day': {'$cond': {'if': {'$gte': ['$buckets', int(l / 2)]}, 'then': {'$add': ['$startDate.day', 1]}, 'else': '$startDate.day'}},
-            'buckets': {'$mod': [{'$toInt': '$buckets'}, int(l / 2)]},
-        }},
-        {'$addFields': {
-            'startDate': {'$dateFromParts': {'year': '$startDate.year', 'month': '$startDate.month', 'day': '$startDate.day', 'timezone': 'America/New_York'}}
-        }},
-        {'$group': {'_id': {'startDate': '$startDate', 'bucket': '$buckets'}, 'total': {'$sum': 1}, 'components': {'$push': {'_id': '$_id', 'employee': '$employee'}}}},
-        {'$group': {'_id': '$_id.startDate', 'buckets': {'$push': '$$ROOT'}}},
-        {'$addFields': {'buckets': {'$map': {'input': '$buckets', 'in': [{'$toString': '$$this._id.bucket'}, {'total': '$$this.total', 'components': '$$this.components'}]}}}},
-        {'$addFields': {'buckets': {'$arrayToObject': '$buckets'}}},
-        {'$project': {'date': '$_id', '_id': 0, 'buckets': 1}},
-        {'$sort': {'date': 1}},
+    	{'$addFields': {'parts': {'$dateToParts': {'date': '$start', 'timezone': 'America/New_York'}}}},
+    	{'$addFields': {
+    	    'parts': {'$dateFromParts': {
+				'year': '$parts.year',
+                'month': '$parts.month',
+                'day': '$parts.day',
+                'hour': '$parts.hour',
+                'minute': {'$toInt': {'$multiply': [{'$floor': {'$divide': ['$parts.minute', interval]}}, interval]}},
+                'timezone': 'America/New_York'}},
+    	    'diff': {'$toInt': {'$divide': [{'$subtract': [{'$ifNull': ['$end', '$$NOW']}, '$start']}, interval*60*1000]}},
+    	}},
+    	{'$addFields': {'diff': {'$map': {'input': {'$range': [0, {'$add': ['$diff', 1]}, 1]}, 'in': {'$add': [{'$multiply': ['$$this', interval*60*1000]}, '$parts']}}}}},
+    	{'$unwind': '$diff'},
+    	{'$group': {'_id': '$diff', 'active': {'$push': {'id': '$_id', 'employee': '$employee'}}, 'count': {'$sum': 1}}},
+    	{'$sort': {'_id': -1}},
+        {'$project': {'date': '$_id', '_id': 0, 'count': 1, 'active': 1}},
     ]
 
     if _range:
