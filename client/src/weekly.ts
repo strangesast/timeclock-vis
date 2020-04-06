@@ -14,7 +14,7 @@ const weekRows = 52; // how many rows to show initially;
 const weekRowHeight = 80; // px
 const weekRowStep = 100; // px
 
-const margin = {top: 80, right: 40, left: 40, bottom: 80};
+const margin = {top: 80, right: 40, left: 80, bottom: 80};
 const {innerWidth: width, innerHeight: height} = window;
 const bottomPadding = Math.ceil((height / 2 - weekRowStep / 2) / weekRowStep) * weekRowStep;
 
@@ -27,7 +27,10 @@ const yScale = d3.scaleTime()
   .range([0, totalHeight])
   .domain([d3.timeWeek.offset(week, -weekRows), d3.timeWeek.offset(week, bottomPadding / weekRowStep)]);
 
+const axis = d3.axisLeft(yScale).ticks(d3.timeWeek.every(1));
 svg.attr('width', '100%').attr('height', totalHeight);
+svg.append('g').attr('transform', `translate(80,${weekRowHeight / 2})`).call(axis);
+const g = svg.append('g');
 const args = {top: weekRowStep * weekRows};
 window.scrollTo(args);
 window.onbeforeunload = () => window.scrollTo(args);
@@ -58,7 +61,8 @@ window.onbeforeunload = () => window.scrollTo(args);
       const date = new Date(y, m-1, d);
       return [date, value];
     });
-    svg.selectAll('g').data(data, ([key, value]) => key).join(
+    console.log(data);
+    g.selectAll('g').data(data, ([key, value]) => key).join(
       enter => enter.append('g')
         // .call(s => s.append('rect').attr('height', weekRowHeight).attr('width', 400))
         .attr('transform', ([key, value]) => `translate(0,${yScale(key as any)})`)

@@ -92,6 +92,7 @@ async def get_weekly_graph_data(mongo_db: AsyncIOMotorDatabase, _range = None):
             {'end': {'$gte': min_date, '$lt': max_date}},
             {'start': {'$lte': min_date}, 'end': {'$gt': max_date}},
         ]}})
+        pipeline.append({'$match': {'date': {'$gt': min_date, '$lt': max_date}}})
 
     return await mongo_db.components.aggregate(pipeline).to_list(None)
 
