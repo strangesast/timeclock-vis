@@ -1,19 +1,31 @@
+declare const GENERATE_MOCKING: boolean;
+declare const NODE_ENV: string;
+
 import * as d3 from 'd3';
-import { Subject } from 'rxjs';
+import { empty, concat, of, fromEvent, Subject } from 'rxjs';
 import * as Comlink from 'comlink';
-import { switchMap, tap, map, throttleTime } from 'rxjs/operators';
+import {
+  exhaustMap,
+  delay,
+  filter,
+  shareReplay,
+  share,
+  startWith,
+  switchMap,
+  tap,
+  map,
+  throttleTime,
+  withLatestFrom,
+} from 'rxjs/operators';
 import { socket } from './socket';
 
 import { Employee, ShiftComponent, Shift, ShiftComponentType, EmployeeShiftColor, ShiftState } from './models';
 import { employeeColorScale, formatDuration, formatTime, formatDateWeekday } from './util';
 import * as constants from './constants';
 
-declare const GENERATE_MOCKING: boolean;
-declare const NODE_ENV: string;
 const worker = Comlink.wrap(new Worker('./data.worker.ts', { type: 'module' })) as any;
 
 let now: Date;
-const body = d3.select(document.body).call(s => s.append('svg'));
 
 async function main() {
   if (GENERATE_MOCKING) {
@@ -28,58 +40,128 @@ async function main() {
   await byTime(now);
 }
 
+const body = d3.select(document.body);
+const svg = body.append('svg');
+const svgElement = svg.node() as SVGElement;
+
+const gShifts = svg.append('g').classed('shifts', true);
+
 async function byTime(date: Date) {
-  const margin = {top: 80, left: 10, right: 10, bottom: 10};
-  const {innerWidth: width, innerHeight: height} = window;
+  const margin = {
+    top: 80,
+    left: 10,
+    right: 10,
+    bottom: 10,
+  };
+
+  const {
+    innerWidth: width,
+    innerHeight: height,
+  } = window;
 
   const axisLabelHeight = 30;
   const resolution = 30 / 3600000; // 30 pixels per hour
+
   const domainWidth = width / resolution;
-  const targetDomainWidth = 20 * 7 * 24 * 60 * 60 * 1000; // two weeks
-  const totalWidth = targetDomainWidth * resolution;
-  const dim = [totalWidth, height];
+
+  // TODO: use fixed width (2x screen height or ...)
+
+  // const targetDomainWidth = 20 * 7 * 24 * 60 * 60 * 1000; // two weeks
+  // const totalWidth = targetDomainWidth * resolution;
+
+  const totalWidth = width * 5; // set svg element size
 
   const rowCount = 12;
   const contentHeight = rowCount * constants.ROW_STEP + margin.top + margin.bottom + axisLabelHeight;
 
-  const d0 = new Date(+date - domainWidth / 2);
-  const d1 = new Date(+date + domainWidth / 2);
-  const initialDomain = [d0, d1];
+  const xScale = d3.scaleTime();
 
-  const x0 = totalWidth / 2 - width / 2;
-  const x1 = x0 + width;
-  
-  const xScale = d3.scaleTime().range([x0, x1]).domain(initialDomain);
+  const resetScale = (centerDate) => {
+    const d = +centerDate;
+    const domain = [
+      new Date(d - domainWidth / 2),
+      new Date(d + domainWidth / 2),
+    ];
+    const range = [
+      totalWidth / 2 - width / 2,
+      totalWidth / 2 + width / 2,
+    ]
+    xScale.range(range).domain(domain);
+    const fullRange = [0, totalWidth];
+    const fullDomain = [xScale.invert(0), xScale.invert(totalWidth)];
+    xScale.range(fullRange).domain(fullDomain);
+  };
 
-  // set to whole svg width for axis
-  const fullRange = [0, totalWidth];
-  const fullDomain = [xScale.invert(0), xScale.invert(totalWidth)];
-  xScale.range(fullRange).domain(fullDomain);
-
-  const svg = body.select('svg');
+  resetScale(date);
 
   drawTopAxis(svg, xScale, contentHeight - margin.bottom - margin.top - axisLabelHeight);
   drawBottomAxis(svg, xScale, contentHeight - axisLabelHeight - margin.bottom);
   drawDateAxis(svg, xScale);
 
-  if (body.select('header').empty()) {
-    body.append('header').append('button')
-      .call(s => s.text('Reset'))
+  const onReset = () => {
+    window.scrollTo({...args, left: xScale(now) - width / 2, behavior: 'smooth'});
   }
-  body.select('header').select('button')
-    .on('click', d => {
-      window.scrollTo({...args, left: xScale(now) - width / 2, behavior: 'smooth'});
-    });
 
-  if (body.select('svg').select('g.shifts').empty()) {
-    body.select('svg').append('g').classed('shifts', true);
-  }
   svg.attr('width', totalWidth).attr('height', height);
 
-  const subject = new Subject();
-  const sub = subject.pipe(
+  const windowDim$ = fromEvent(window, 'resize').pipe(
+    startWith(null),
+    map(() => {
+      const {innerWidth, innerHeight} = window;
+      return {innerWidth, innerHeight};
+    }),
+    shareReplay(1),
+  );
+
+  const dim$ = windowDim$.pipe(
+    map(({innerWidth}) => ({width: totalWidth, height: height})),
+    shareReplay(1),
+  );
+
+  const scrollPos$ = fromEvent(window, 'scroll').pipe(
+    map(() => {
+      const {scrollX, scrollY} = window;
+      return {scrollX, scrollY};
+    }),
+    shareReplay(1),
+  );
+
+  const scrollEdgeThreshold = 2;
+
+  scrollPos$.pipe(
+    withLatestFrom(dim$, windowDim$, ({scrollX}, {width}, {innerWidth}) => ({scrollX, width, innerWidth})),
+    map(({innerWidth, width, scrollX}) => (scrollX < scrollEdgeThreshold)
+      || ((width - (scrollX + innerWidth)) < scrollEdgeThreshold) ? scrollX : null),
+    filter(val => val !== null),
+    exhaustMap(v => concat(
+      of(v),
+      empty().pipe(delay(200)), // TODO: use position threshold instead of time
+    )),
+    tap(pos => {
+      // const newCenterDate = xScale.domain()[dir == -1 ? 0 : 1];
+      const newCenterDate = xScale.invert(pos);
+
+      resetScale(newCenterDate);
+      drawTopAxis(svg, xScale, contentHeight - margin.bottom - margin.top - axisLabelHeight);
+      drawBottomAxis(svg, xScale, contentHeight - axisLabelHeight - margin.bottom);
+      drawDateAxis(svg, xScale);
+
+      gShifts.selectAll<SVGGraphicsElement, Shift>('g.shift')
+        .each(d => {
+          const [a, b] = [d.start, d.end || now].map(xScale);
+          d.x = Math.min(Math.max(a, 0), b); // copied from updatePositions
+        })
+        .attr('transform', d => `translate(0,${d.y})`);
+
+      const left = xScale(newCenterDate);
+      window.scrollTo({left, top: 0, behavior: 'auto' as ScrollBehavior});
+    }),
+  ).subscribe();
+
+  const sub = scrollPos$.pipe(
     throttleTime(100),
-    map(([x0, w]) => [xScale.invert(x0), xScale.invert(x0 + w)]),
+    withLatestFrom(windowDim$, ({scrollX}, {innerWidth}) => [scrollX, innerWidth]),
+    map(([scrollX, innerWidth]) => [xScale.invert(scrollX), xScale.invert(scrollX + innerWidth)]),
     switchMap(domain => worker.getShiftsInRange(domain)),
     tap((data: any) => {
       data.shifts.forEach(shift => updatePositions(shift, data.employees));
@@ -104,10 +186,10 @@ async function byTime(date: Date) {
   }
 
   function draw({shifts, employees}: {shifts: Shift[], employees: {[id: string]: Employee}}) {
-    body.select('svg')
-      .attr('width', totalWidth)
-      .attr('height', contentHeight)
-      .select('g.shifts').raise()
+    svg.attr('width', totalWidth)
+      .attr('height', contentHeight);
+
+    gShifts.raise()
       .selectAll('g.shift')
       .data(shifts, d => d['id'])
       .join(enter => enter.append('g').classed('shift', true)
@@ -154,20 +236,16 @@ async function byTime(date: Date) {
       });
   }
 
-  const onScroll = () => subject.next([window.scrollX, window.innerWidth]);
   const onBeforeUnload = () => window.scrollTo(args);
-
-  window.addEventListener('scroll', onScroll);
   window.addEventListener('beforeunload', onBeforeUnload);
 
-  let args = {left: xScale(initialDomain[0]), top: 0, behavior: 'auto' as ScrollBehavior};
+  let args = {left: xScale(now) - width / 2, top: 0, behavior: 'auto' as ScrollBehavior};
   window.scrollTo(args);
 
   const cleanup = () => {
     svg.select('g.axis.top').remove()
     svg.select('g.axis.bottom').remove()
     svg.select('g.axis.date').remove()
-    window.removeEventListener('scroll', onScroll);
     window.removeEventListener('beforeunload', onBeforeUnload);
     sub.unsubscribe();
   };
@@ -231,7 +309,6 @@ function byEmployee(employeeId: string, date = new Date()) {
   const d1 = new Date(+date + domainHeight / 2);
 
   const totalHeight = constants.ROW_STEP * 20 * 7;
-  const dim = [width, totalHeight];
 
   const yScale = d3.scaleTime().domain([d0, d1]).range([totalHeight / 2 - height / 2, totalHeight / 2 + height / 2]);
   const xScale = d3.scaleTime().range([margin.left, width - margin.right]);
@@ -240,29 +317,31 @@ function byEmployee(employeeId: string, date = new Date()) {
   const fullDomain = [yScale.invert(0), yScale.invert(totalHeight)];
   yScale.range(fullRange).domain(fullDomain);
 
-  const svg = body.select('svg');
   svg.attr('width', width).attr('height', totalHeight);
-  svg.select('g.shifts').raise();
+  gShifts.raise();
 
-  if (svg.select('g.axis.left').empty()) {
-    svg.append('g').classed('axis left', true);
-  }
-  svg.select('g.axis.left')
-    .attr('transform', `translate(${64},0)`)
-    .call(d3.axisLeft(yScale).ticks(d3.timeWeek.every(1)))
+  const axisData = [
+    {classed: ['left'], id: 'employee-axis-left', transform: [64, 0], fn: d3.axisLeft(yScale).ticks(d3.timeWeek.every(1))},
+  ];
 
-  if (body.select('header').empty()) {
-    body.append('header').append('button').text('Reset');
-  }
-  body.select('header').select('button').on('click', () => {
+  svg.selectAll('g.axis').data(axisData, d => d['id'])
+    .join(
+      enter => enter.append('g')
+        .attr('class', d => ['axis', ...d.classed].join(' ')),
+    )
+    .attr('transform', d => `translate(${d.transform.join(',')})`)
+    .call(d => d['fn'])
+
+  const onReset = () => {
     window.scrollTo({...args, top: yScale(d3.timeWeek.floor(now)), behavior: 'smooth'});
-  });
-  if (body.select('svg').select('g.shifts').empty()) {
-    body.select('svg').append('g').classed('shifts', true);
   }
 
-  const subject = new Subject();
-  const sub = subject.pipe(
+  const scrollPos = fromEvent(window, 'scroll').pipe(
+    map(() => [window.scrollY, window.innerHeight]),
+    share(),
+  );
+
+  const sub = scrollPos.pipe(
     throttleTime(100),
     map(([y0, h]) => [yScale.invert(y0), yScale.invert(y0 + h)]),
     switchMap(domain => worker.getShiftsByEmployeeInRange(employeeId, domain)),
@@ -297,8 +376,7 @@ function byEmployee(employeeId: string, date = new Date()) {
   }
 
   function draw({shifts, employees}: {shifts: Shift[], employees: {[id: string]: Employee}}) {
-    svg.select('g.shifts')
-      .selectAll('g.shift')
+    gShifts.selectAll('g.shift')
       .data(shifts, d => d['id'])
       .join(enter => enter.append('g').classed('shift', true)
         .call(s => s.append('g').classed('shift-text', true)
@@ -312,7 +390,6 @@ function byEmployee(employeeId: string, date = new Date()) {
       .attr('transform', d => `translate(0,${d.y})`)
       .each(function (d) {
         const s = d3.select(this);
-        // const dx = ((this as any).firstChild as SVGGraphicsElement).getBBox().width + 4;
         s.select('g.shift-text')
           .attr('transform', `translate(${d.x},${-constants.ROW_TEXT_HEIGHT})`)
           .call(s => s.select('text.name').text(formatDateWeekday(d.start)))
@@ -344,10 +421,8 @@ function byEmployee(employeeId: string, date = new Date()) {
       });
   }
 
-  const onScroll = () => subject.next([window.scrollY, window.innerHeight]);
   const onBeforeUnload = () => window.scrollTo(args);
 
-  window.addEventListener('scroll', onScroll);
   window.addEventListener('beforeunload', onBeforeUnload);
 
   let args = {left: 0, top: yScale(d3.timeWeek.floor(date)), behavior: 'auto' as ScrollBehavior};
@@ -355,7 +430,6 @@ function byEmployee(employeeId: string, date = new Date()) {
 
   const cleanup = () => {
     svg.select('g.axis.left').remove();
-    window.removeEventListener('scroll', onScroll);
     window.removeEventListener('beforeunload', onBeforeUnload);
     sub.unsubscribe();
   };
