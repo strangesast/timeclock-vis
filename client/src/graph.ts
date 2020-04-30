@@ -4,7 +4,7 @@ import { Employee, GraphDataResponse } from './models';
 import { formatName } from './util';
 import * as Comlink from 'comlink';
 
-const worker = Comlink.wrap(new Worker('./data.worker.ts', { type: 'module' })) as any;
+const worker = Comlink.wrap(new Worker('./worker.js', { type: 'module' })) as any;
 
 const [width, height] = [1000, 1000];
 

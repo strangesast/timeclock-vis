@@ -5,7 +5,7 @@ import { fromEvent } from 'rxjs';
 import { switchMap, map, throttleTime } from 'rxjs/operators';
 import * as Comlink from 'comlink';
 
-const worker = Comlink.wrap(new Worker('./data.worker.ts', { type: 'module' })) as any;
+const worker = Comlink.wrap(new Worker('./worker.js', { type: 'module' })) as any;
 
 
 const svg = d3.select(document.body).append('svg');
