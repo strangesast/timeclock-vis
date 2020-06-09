@@ -11,7 +11,7 @@ async def get_mysql_db(config):
     '''
     host, port, user, password, db = [os.environ.get(f'MYSQL_{k.upper()}') or config.get(k) for k in ['host', 'port', 'user', 'password', 'db']]
     port = int(port)
-    conn = await aiomysql.connect(host=host, port=port, user=user, password=password)
+    conn = await aiomysql.connect(host=host, port=port, user=user, password=password, autocommit=True)
     return conn
 
 

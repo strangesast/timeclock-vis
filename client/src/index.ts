@@ -73,7 +73,7 @@ async function byTime(date: Date) {
 
   const totalWidth = width * 5; // set svg element size
 
-  const rowCount = 12;
+  const rowCount = 14;
   const contentHeight = rowCount * constants.ROW_STEP + margin.top + margin.bottom + axisLabelHeight;
 
   const xScale = d3.scaleTime();
@@ -130,7 +130,7 @@ async function byTime(date: Date) {
 
   const scrollEdgeThreshold = 2;
 
-  scrollPos$.pipe(
+  const sub0 = scrollPos$.pipe(
     withLatestFrom(dim$, windowDim$, ({scrollX}, {width}, {innerWidth}) => ({scrollX, width, innerWidth})),
     map(({innerWidth, width, scrollX}) => (scrollX < scrollEdgeThreshold)
       || ((width - (scrollX + innerWidth)) < scrollEdgeThreshold) ? scrollX : null),
@@ -160,7 +160,7 @@ async function byTime(date: Date) {
     }),
   ).subscribe();
 
-  const sub = scrollPos$.pipe(
+  const sub1 = scrollPos$.pipe(
     throttleTime(100),
     withLatestFrom(windowDim$, ({scrollX}, {innerWidth}) => [scrollX, innerWidth]),
     map(([scrollX, innerWidth]) => [xScale.invert(scrollX), xScale.invert(scrollX + innerWidth)]),
@@ -249,7 +249,8 @@ async function byTime(date: Date) {
     svg.select('g.axis.bottom').remove()
     svg.select('g.axis.date').remove()
     window.removeEventListener('beforeunload', onBeforeUnload);
-    sub.unsubscribe();
+    sub0.unsubscribe();
+    sub1.unsubscribe();
   };
 
   function drawTopAxis(sel, scale, h) {

@@ -114,7 +114,6 @@ async def main(config):
     mongo_db = mongo_client.timeclock
     logging.info('running init')
     await init(mongo_db, mysql_client)
-    mysql_client.close()
 
     interval = timedelta(hours=1)
     buf = 60 # 1 minute. added to interval, or used as timeout between retries
@@ -125,8 +124,6 @@ async def main(config):
         latest_sync = d.get('date') if (d := await mongo_db.sync_history.find_one({}, sort=[('date', pymongo.DESCENDING)])) else None
 
         while True:
-
-            mysql_client = await get_mysql_db(config['MYSQL'])
             async with mysql_client.cursor() as mysql_cursor:
                 if latest_poll:
                     await mysql_cursor.execute('select StartTime from tam.polllog where StartTime > %s order by StartTime desc',
@@ -140,8 +137,6 @@ async def main(config):
                     print(f'{len(polls)=}')
                     latest_poll = polls[0]['date']
                     await mongo_db.polls.insert_many(polls)
-            mysql_client.close()
-
 
             now = datetime.utcnow()
 
@@ -171,7 +166,7 @@ async def main(config):
     finally:
         logging.info('cancelled')
         await amg_rpc_proxy.close()
-        #mysql_client.close()
+        mysql_client.close()
         mongo_client.close()
 
 

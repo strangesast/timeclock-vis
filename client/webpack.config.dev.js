@@ -10,7 +10,7 @@ module.exports = merge(baseConfig, {
   ],
   devtool: 'source-map',
   devServer: {
-    port: 8080,
+    port: process.env.PORT || 8080,
     host: '0.0.0.0',
     compress: true,
     disableHostCheck: true,
