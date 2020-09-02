@@ -151,7 +151,7 @@ async def main(config):
                 continue
 
             min_date = get_sunday((min(now, latest_sync) if latest_sync else (now - timedelta(days=365))).astimezone(tz)).replace(tzinfo=None)
-            #min_date = min(get_sunday(now.astimezone(tz)), get_sunday(latest_sync)) if latest_sync else get_sunday(now - timedelta(days=365))
+            #min_date = min(get_sunday(now.astimezone(tz)), get_sunday(latest_sync)) if latest_sync else get_sunday(now - timedelta(days=365) * 2)
             logging.info(f'{min_date=}')
 
             await update(mongo_db, amg_rpc_proxy, min_date, now)
@@ -409,7 +409,7 @@ if __name__ == '__main__':
     config = configparser.ConfigParser()
     config.read('config.ini')
 
-    logging.getLogger().setLevel(logging.INFO)
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
     logging.info('daemon starting up')
     sys.stdout.flush()
     try:
