@@ -127,7 +127,7 @@ async def main(config):
             async with mysql_client.cursor() as mysql_cursor:
                 if latest_poll:
                     await mysql_cursor.execute('select StartTime from tam.polllog where StartTime > %s order by StartTime desc',
-                            (latest_poll + tz.utcoffset(latest_poll),))
+                            (latest_poll + tz.utcoffset(latest_poll, is_dst=True),))
                 else:
                     await mysql_cursor.execute('select StartTime from tam.polllog order by StartTime desc')
                     

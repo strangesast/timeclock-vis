@@ -76,6 +76,7 @@ SHIFTS_PIPELINE = [
         'id': {'$toString': '$_id'},
         'expectedDuration': 1000 * 60 * 60 * 8,
     }},
+    {'$match': {'duration': {'$lt': 13 * 60 * 60 * 1000}}},
     {'$project': {'_id': 0}},
 ]
 

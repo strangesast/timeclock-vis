@@ -73,7 +73,7 @@ async function byTime(date: Date) {
 
   const totalWidth = width * 5; // set svg element size
 
-  const rowCount = 14;
+  const rowCount = 15;
   const contentHeight = rowCount * constants.ROW_STEP + margin.top + margin.bottom + axisLabelHeight;
 
   const xScale = d3.scaleTime();
